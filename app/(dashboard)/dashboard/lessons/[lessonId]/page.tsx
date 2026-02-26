@@ -6,7 +6,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLesson } from '../../../../../hooks/useLesson';
 import { useLessonMutations } from '../../../../../hooks/useLessonMutations';
 import { useToast } from '../../../../../components/providers/ToastProvider';
-import { LessonStatus, TaskType, TaskOption } from '../../../../lib/apiTypes';
+import { LessonStatus, TaskType, TaskOption } from '../../../../../lib/apiTypes';
 
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
 const TASK_TYPES: TaskType[] = ['PICK_ONE', 'FILL_IN_BLANK', 'MATCH'];
@@ -89,7 +89,7 @@ useEffect(() => {
     setTaskFeedback(null);
   }, [newTaskPrompt, newTaskType]);
 
-  const tasks = lesson?.tasks ?? [];
+  const tasks = useMemo(() => lesson?.tasks ?? [], [lesson?.tasks]);
 
   const handleLessonSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

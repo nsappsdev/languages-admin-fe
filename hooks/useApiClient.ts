@@ -4,7 +4,7 @@ import { useAuth } from '../components/providers/AuthProvider';
 import { API_BASE_URL } from '../lib/config';
 
 export function useApiClient() {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
 
   const request = async <T>(
     path: string,
@@ -30,6 +30,11 @@ export function useApiClient() {
         typeof payload === 'object' && payload && 'message' in payload
           ? (payload as { message: string }).message
           : 'Request failed';
+
+      if (response.status === 401 && message === 'Invalid or expired token') {
+        logout();
+      }
+
       throw new Error(message);
     }
     return payload as T;

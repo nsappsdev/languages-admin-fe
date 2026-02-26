@@ -8,7 +8,7 @@ const NAV_LINKS = [
   { href: '/dashboard', label: 'Overview' },
   { href: '/dashboard/lessons', label: 'Lessons' },
   { href: '/dashboard/vocabulary', label: 'Vocabulary' },
-  { href: '/dashboard/learners', label: 'Learners', disabled: true },
+  { href: '/dashboard/learners', label: 'Learners' },
   { href: '/dashboard/settings', label: 'Settings', disabled: true },
 ];
 

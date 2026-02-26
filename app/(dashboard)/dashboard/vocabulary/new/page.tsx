@@ -4,7 +4,7 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../../../../../components/providers/ToastProvider';
 import { useVocabularyMutations } from '../../../../../hooks/useVocabularyMutations';
-import { VocabularyKind } from '../../../../../../lib/apiTypes';
+import { VocabularyKind } from '../../../../../lib/apiTypes';
 
 const KINDS: VocabularyKind[] = ['WORD', 'PHRASE', 'SENTENCE'];
 

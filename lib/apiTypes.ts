@@ -41,3 +41,32 @@ export interface LessonSummary {
   status: LessonStatus;
   tasks: TaskSummary[];
 }
+
+export interface LearnerSummary {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  vocabularySaved: number;
+  progressEvents: number;
+}
+
+export interface LearnerLessonProgressSummary {
+  lessonId: string;
+  lessonTitle: string | null;
+  lessonStatus: string | null;
+  totalEvents: number;
+  attemptEvents: number;
+  correctAttempts: number;
+  tasksCompleted: number;
+  bestScore: number | null;
+  lastScore: number | null;
+  bestCompletion: number | null;
+  lastActivityAt: string;
+}
+
+export interface LearnerProgressSummaryResponse {
+  learner: LearnerSummary;
+  lessonSummaries: LearnerLessonProgressSummary[];
+}
