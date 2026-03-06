@@ -1,0 +1,11 @@
+.git
+.github
+.idea
+.next
+coverage
+node_modules
+npm-debug.log
+Dockerfile
+.env
+.env.*
+docs
