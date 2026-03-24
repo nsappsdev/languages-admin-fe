@@ -8,8 +8,8 @@ export interface AnalyticsOverview {
     totalLessons: number;
     publishedLessons: number;
     draftLessons: number;
-    totalTasks: number;
-    avgTasksPerLesson: number;
+    totalItems: number;
+    avgItemsPerLesson: number;
     latestPublishedLesson: { title: string; publishedAt: string } | null;
   };
 }

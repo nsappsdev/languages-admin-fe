@@ -2,47 +2,46 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useLesson } from '../../../../../hooks/useLesson';
 import { useLessonMutations } from '../../../../../hooks/useLessonMutations';
 import { useToast } from '../../../../../components/providers/ToastProvider';
-import { LessonStatus, TaskType, TaskOption } from '../../../../../lib/apiTypes';
+import { LessonItem, LessonItemSegment, LessonStatus } from '../../../../../lib/apiTypes';
 
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
-const TASK_TYPES: TaskType[] = ['PICK_ONE', 'FILL_IN_BLANK', 'MATCH'];
 
-const createOption = () => ({
-  id:
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2),
-  label: '',
-  isCorrect: false,
+type EditableSegment = LessonItemSegment & { localId: string };
+type EditableItem = Omit<LessonItem, 'segments'> & { localId: string; segments: EditableSegment[] };
+
+const createLocalId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+
+const createSegment = (): EditableSegment => ({
+  id: createLocalId(),
+  localId: createLocalId(),
+  text: '',
+  startMs: 0,
+  endMs: 1000,
 });
 
-type TaskOptionEdit = {
-  id?: string;
-  localId: string;
-  label: string;
-  isCorrect: boolean;
-};
+const createItem = (order: number): EditableItem => ({
+  id: createLocalId(),
+  localId: createLocalId(),
+  text: '',
+  audioUrl: '',
+  order,
+  segments: [createSegment()],
+});
 
-type TaskEditState = {
-  prompt: string;
-  type: TaskType;
-  options: TaskOptionEdit[];
-  order?: number;
-};
-
-const createEditableOption = (option?: TaskOption): TaskOptionEdit => ({
-  id: option?.id,
-  localId:
-    option?.id ??
-    (typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2)),
-  label: option?.label ?? '',
-  isCorrect: option?.isCorrect ?? false,
+const toEditableItem = (item: LessonItem): EditableItem => ({
+  ...item,
+  localId: item.id,
+  segments: item.segments.map((segment) => ({
+    ...segment,
+    localId: segment.id,
+  })),
 });
 
 export default function LessonDetailPage() {
@@ -50,50 +49,47 @@ export default function LessonDetailPage() {
   const lessonId = params?.lessonId ?? '';
   const { data, isLoading, error } = useLesson(lessonId);
   const lesson = data?.lesson;
-  const { updateLesson, createTask, deleteTask } = useLessonMutations();
+  const { updateLesson, uploadLessonAudio } = useLessonMutations();
   const { notify } = useToast();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<LessonStatus>('DRAFT');
+  const [items, setItems] = useState<EditableItem[]>([]);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [taskEdits, setTaskEdits] = useState<Record<string, TaskEditState>>({});
-  const [taskMessages, setTaskMessages] = useState<Record<string, string>>({});
-  const [isReordering, setIsReordering] = useState(false);
+  const [itemsFeedback, setItemsFeedback] = useState<string | null>(null);
+  const [uploadingItemLocalId, setUploadingItemLocalId] = useState<string | null>(null);
 
-  const [newTaskPrompt, setNewTaskPrompt] = useState('');
-  const [newTaskType, setNewTaskType] = useState<TaskType>('PICK_ONE');
-  const [newTaskOptions, setNewTaskOptions] = useState([createOption(), createOption()]);
-  const [newTaskAnswers, setNewTaskAnswers] = useState('');
-  const [taskFeedback, setTaskFeedback] = useState<string | null>(null);
-
-useEffect(() => {
-  if (lesson) {
+  useEffect(() => {
+    if (!lesson) return;
     setTitle(lesson.title);
     setDescription(lesson.description ?? '');
     setStatus(lesson.status);
-    const edits: Record<string, TaskEditState> = {};
-    lesson.tasks.forEach((task) => {
-      edits[task.id] = {
-        prompt: task.prompt,
-        type: task.type,
-        options: (task.options ?? []).map((option) => createEditableOption(option)),
-      };
-    });
-    setTaskEdits(edits);
-    setTaskMessages({});
-  }
-}, [lesson]);
+    setItems(lesson.items.map(toEditableItem));
+  }, [lesson]);
 
-  useEffect(() => {
-    setTaskFeedback(null);
-  }, [newTaskPrompt, newTaskType]);
+  const sortedItems = useMemo(
+    () => [...items].sort((left, right) => left.order - right.order),
+    [items],
+  );
 
-  const tasks = useMemo(() => lesson?.tasks ?? [], [lesson?.tasks]);
+  const normalizeItems = (currentItems: EditableItem[]): EditableItem[] =>
+    currentItems.map((item, index): EditableItem => ({
+      ...item,
+      order: index,
+      segments: item.segments.map((segment): EditableSegment => ({
+        id: segment.id,
+        localId: segment.localId,
+        text: segment.text,
+        startMs: Number(segment.startMs),
+        endMs: Number(segment.endMs),
+      })),
+    }));
 
   const handleLessonSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!lessonId) return;
+
     setFeedback(null);
     try {
       await updateLesson.mutateAsync({
@@ -104,244 +100,131 @@ useEffect(() => {
       notify('Lesson updated');
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : 'Failed to save lesson');
-      notify('Failed to update lesson', 'error');
+      notify('Failed to save lesson', 'error');
     }
   };
 
-  const resetTaskForm = () => {
-    setNewTaskPrompt('');
-    setNewTaskOptions([createOption(), createOption()]);
-    setNewTaskAnswers('');
-    setNewTaskType('PICK_ONE');
-  };
-
-  const handleCreateTask = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleItemsSave = async () => {
     if (!lessonId) return;
-    setTaskFeedback(null);
-    if (newTaskPrompt.trim().length < 4) {
-      setTaskFeedback('Prompt must be at least 4 characters.');
+
+    const normalizedItems = normalizeItems(sortedItems);
+    const hasInvalidItems = normalizedItems.some(
+      (item) =>
+        item.text.trim().length < 1 ||
+        item.audioUrl.trim().length < 1 ||
+        item.segments.length < 1 ||
+        item.segments.some(
+          (segment) =>
+            segment.text.trim().length < 1 ||
+            Number.isNaN(segment.startMs) ||
+            Number.isNaN(segment.endMs) ||
+            segment.endMs <= segment.startMs,
+        ),
+    );
+
+    if (hasInvalidItems) {
+      setItemsFeedback('Each item needs text, an audio URL, and valid phrase timings.');
       return;
     }
-    if (
-      newTaskType === 'PICK_ONE' &&
-      newTaskOptions.some((option) => option.label.trim().length < 1)
-    ) {
-      setTaskFeedback('All options need labels.');
-      return;
-    }
-    try {
-      await createTask.mutateAsync({
-        lessonId,
-        prompt: newTaskPrompt,
-        type: newTaskType,
-        order: tasks.length,
-        config:
-          newTaskType === 'FILL_IN_BLANK'
-            ? {
-                correctAnswers: newTaskAnswers
-                  .split(',')
-                  .map((entry) => entry.trim())
-                  .filter(Boolean),
-              }
-            : {},
-        options:
-          newTaskType === 'PICK_ONE'
-            ? newTaskOptions.map((option) => ({
-                label: option.label,
-                isCorrect: option.isCorrect,
-              }))
-            : undefined,
-      });
-      setTaskFeedback('Task added');
-      notify('Task added');
-      resetTaskForm();
-    } catch (err) {
-      setTaskFeedback(err instanceof Error ? err.message : 'Failed to add task');
-      notify('Failed to add task', 'error');
-    }
-  };
 
-  const handleDeleteTask = async (taskId: string) => {
-    if (!lessonId) return;
-    try {
-      await deleteTask.mutateAsync({ lessonId, taskId });
-      notify('Task removed');
-    } catch (err) {
-      notify(
-        err instanceof Error ? err.message : 'Failed to remove task',
-        'error',
-      );
-    }
-  };
-
-  const canSubmitTask =
-    newTaskPrompt.trim().length > 0 &&
-    (newTaskType !== 'PICK_ONE' ||
-      newTaskOptions.every((option) => option.label.trim().length > 0));
-
-  const renderTaskOptions = () => {
-    if (newTaskType !== 'PICK_ONE') return null;
-    return (
-      <div className="space-y-2">
-        {newTaskOptions.map((option, index) => (
-          <div key={option.id} className="flex items-center gap-2">
-            <input
-              value={option.label}
-              onChange={(e) =>
-                setNewTaskOptions((opts) =>
-                  opts.map((opt) => (opt.id === option.id ? { ...opt, label: e.target.value } : opt)),
-                )
-              }
-              placeholder={`Option ${index + 1}`}
-              className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <label className="flex items-center gap-1 text-xs text-slate-600">
-              <input
-                type="checkbox"
-                checked={option.isCorrect}
-                onChange={(e) =>
-                  setNewTaskOptions((opts) =>
-                    opts.map((opt) =>
-                      opt.id === option.id ? { ...opt, isCorrect: e.target.checked } : opt,
-                    ),
-                  )
-                }
-              />
-              Correct
-            </label>
-            {newTaskOptions.length > 2 && (
-              <button
-                type="button"
-                className="text-xs text-rose-600"
-                onClick={() =>
-                  setNewTaskOptions((opts) => opts.filter((opt) => opt.id !== option.id))
-                }
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        ))}
-        <button
-          type="button"
-          className="text-sm text-brand-600"
-          onClick={() => setNewTaskOptions((opts) => [...opts, createOption()])}
-        >
-          + Add option
-        </button>
-      </div>
-    );
-  };
-
-  const renderAnswersInput = () => {
-    if (newTaskType !== 'FILL_IN_BLANK') return null;
-    return (
-      <div>
-        <label className="text-sm text-slate-700">Correct answers (comma separated)</label>
-        <input
-          value={newTaskAnswers}
-          onChange={(e) => setNewTaskAnswers(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          placeholder="small, medium"
-        />
-      </div>
-    );
-  };
-
-  const handleTaskSave = useCallback(
-    async (taskId: string) => {
-      if (!lessonId) return;
-      const task = tasks.find((t) => t.id === taskId);
-      if (!task) return;
-      const edit = taskEdits[taskId];
-      if (!edit?.prompt) return;
-      setTaskMessages((prev) => ({ ...prev, [taskId]: 'Saving…' }));
-      try {
-        const optionsPayload =
-          edit.type === 'PICK_ONE'
-            ? (edit.options ?? [])
-                .filter((option) => option.label.trim().length > 0)
-                .map((option) => ({
-                  id: option.id,
-                  label: option.label,
-                  isCorrect: option.isCorrect,
-                }))
-            : [];
-        await updateLesson.mutateAsync({
-          lessonId,
-          data: {
-            tasks: [
-              {
-                id: taskId,
-                prompt: edit.prompt,
-                type: edit.type,
-                order: task.order,
-                options: optionsPayload,
-              },
-            ],
-          },
-        });
-        setTaskMessages((prev) => ({ ...prev, [taskId]: 'Saved' }));
-      } catch (err) {
-        setTaskMessages((prev) => ({
-          ...prev,
-          [taskId]: err instanceof Error ? err.message : 'Failed to save',
-        }));
-      }
-    },
-    [lessonId, taskEdits, tasks, updateLesson],
-  );
-
-  const moveTask = async (taskId: string, direction: 'up' | 'down') => {
-    if (!lesson || isReordering) return;
-    const currentIndex = tasks.findIndex((task) => task.id === taskId);
-    if (currentIndex === -1) return;
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= tasks.length) return;
-    const reordered = [...tasks];
-    const [moved] = reordered.splice(currentIndex, 1);
-    reordered.splice(newIndex, 0, moved);
-
-    setTaskEdits((prev) => {
-      const updated: Record<string, TaskEditState> = { ...prev };
-      reordered.forEach((task, index) => {
-        if (updated[task.id]) {
-          updated[task.id] = { ...updated[task.id], order: index };
-        } else {
-          updated[task.id] = {
-            prompt: task.prompt,
-            type: task.type,
-            options: (task.options ?? []).map((option) => createEditableOption(option)),
-            order: index,
-          };
-        }
-      });
-      return updated;
-    });
-
-    setIsReordering(true);
+    setItemsFeedback('Saving…');
     try {
       await updateLesson.mutateAsync({
         lessonId,
         data: {
-          tasks: reordered.map((task, idx) => ({
-            id: task.id,
-            prompt: taskEdits[task.id]?.prompt ?? task.prompt,
-            type: taskEdits[task.id]?.type ?? task.type,
-            order: idx,
+          items: normalizedItems.map((item, index) => ({
+            id: item.id,
+            text: item.text,
+            audioUrl: item.audioUrl,
+            order: index,
+            segments: item.segments.map(({ id, text, startMs, endMs }) => ({
+              id,
+              text,
+              startMs,
+              endMs,
+            })),
           })),
         },
       });
-      notify('Task order updated');
+      setItems((prev) => normalizeItems(prev));
+      setItemsFeedback('Items saved');
+      notify('Lesson items updated');
     } catch (err) {
-      notify(err instanceof Error ? err.message : 'Failed to reorder tasks', 'error');
-    } finally {
-      setIsReordering(false);
+      const message = err instanceof Error ? err.message : 'Failed to save items';
+      setItemsFeedback(message);
+      notify(message, 'error');
     }
   };
 
-  const renderTaskBody = useMemo(() => {
+  const updateItem = (localId: string, updater: (item: EditableItem) => EditableItem) => {
+    setItems((prev) =>
+      prev.map((item) => (item.localId === localId ? updater(item) : item)),
+    );
+  };
+
+  const moveItem = (localId: string, direction: 'up' | 'down') => {
+    setItems((prev) => {
+      const currentIndex = prev.findIndex((item) => item.localId === localId);
+      if (currentIndex === -1) return prev;
+      const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const reordered = [...prev];
+      const [moved] = reordered.splice(currentIndex, 1);
+      reordered.splice(nextIndex, 0, moved);
+      return reordered.map((item, index) => ({ ...item, order: index }));
+    });
+  };
+
+  const addItem = () => {
+    setItems((prev) => [...prev, createItem(prev.length)]);
+    setItemsFeedback(null);
+  };
+
+  const removeItem = (localId: string) => {
+    setItems((prev) =>
+      prev
+        .filter((item) => item.localId !== localId)
+        .map((item, index) => ({ ...item, order: index })),
+    );
+    setItemsFeedback(null);
+  };
+
+  const addSegment = (itemLocalId: string) => {
+    updateItem(itemLocalId, (item) => ({
+      ...item,
+      segments: [...item.segments, createSegment()],
+    }));
+  };
+
+  const removeSegment = (itemLocalId: string, segmentLocalId: string) => {
+    updateItem(itemLocalId, (item) => ({
+      ...item,
+      segments: item.segments.filter((segment) => segment.localId !== segmentLocalId),
+    }));
+  };
+
+  const handleAudioUpload = async (itemLocalId: string, file: File) => {
+    setUploadingItemLocalId(itemLocalId);
+    setItemsFeedback(null);
+
+    try {
+      const response = await uploadLessonAudio.mutateAsync({ file });
+      updateItem(itemLocalId, (current) => ({
+        ...current,
+        audioUrl: response.file.audioUrl,
+      }));
+      setItemsFeedback(`Uploaded ${response.file.originalName}`);
+      notify('Audio uploaded');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to upload audio';
+      setItemsFeedback(message);
+      notify(message, 'error');
+    } finally {
+      setUploadingItemLocalId((current) => (current === itemLocalId ? null : current));
+    }
+  };
+
+  const renderItemsBody = () => {
     if (isLoading) return <p className="text-sm text-slate-500">Loading lesson…</p>;
     if (error) {
       return <p className="text-sm text-rose-600">Failed to load lesson: {error.message}</p>;
@@ -349,203 +232,207 @@ useEffect(() => {
     if (!lesson) {
       return <p className="text-sm text-rose-600">Lesson not found.</p>;
     }
+    if (!sortedItems.length) {
+      return <p className="text-sm text-slate-500">No lesson items yet.</p>;
+    }
+
     return (
-      <div className="space-y-3">
-        {tasks.map((task, index) => (
+      <div className="space-y-4">
+        {sortedItems.map((item, index) => (
           <div
-            key={task.id}
-            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3"
+            key={item.localId}
+            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4"
           >
             <div className="flex items-start justify-between gap-4">
               <p className="text-sm font-semibold text-slate-900">#{index + 1}</p>
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => moveTask(task.id, 'up')}
+                  onClick={() => moveItem(item.localId, 'up')}
                   className="text-xs text-slate-500"
-                  disabled={index === 0 || isReordering}
+                  disabled={index === 0}
                 >
                   ↑
                 </button>
                 <button
                   type="button"
-                  onClick={() => moveTask(task.id, 'down')}
+                  onClick={() => moveItem(item.localId, 'down')}
                   className="text-xs text-slate-500"
-                  disabled={index === tasks.length - 1 || isReordering}
+                  disabled={index === sortedItems.length - 1}
                 >
                   ↓
                 </button>
                 <button
-                  onClick={() => handleDeleteTask(task.id)}
+                  type="button"
+                  onClick={() => removeItem(item.localId)}
                   className="text-xs text-rose-600"
-                  disabled={deleteTask.isPending}
                 >
                   Remove
                 </button>
               </div>
             </div>
+
             <div>
-              <label className="block text-xs font-medium text-slate-500">Prompt</label>
+              <label className="block text-xs font-medium text-slate-500">Text</label>
               <textarea
-                value={taskEdits[task.id]?.prompt ?? ''}
+                value={item.text}
                 onChange={(e) =>
-                  setTaskEdits((prev) => ({
-                    ...prev,
-                    [task.id]: {
-                      prompt: e.target.value,
-                      type: prev[task.id]?.type ?? task.type,
-                      options: prev[task.id]?.options ?? [],
-                    },
+                  updateItem(item.localId, (current) => ({
+                    ...current,
+                    text: e.target.value,
                   }))
                 }
                 className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                rows={2}
+                rows={3}
               />
             </div>
+
             <div>
-              <label className="block text-xs font-medium text-slate-500">Type</label>
-              <select
-                value={taskEdits[task.id]?.type ?? task.type}
+              <label className="block text-xs font-medium text-slate-500">Audio URL</label>
+              <input
+                value={item.audioUrl}
                 onChange={(e) =>
-                  setTaskEdits((prev) => {
-                    const nextType = e.target.value as TaskType;
-                    const currentOptions = prev[task.id]?.options ?? [];
-                    return {
-                      ...prev,
-                      [task.id]: {
-                        prompt: prev[task.id]?.prompt ?? task.prompt,
-                        type: nextType,
-                        options:
-                          nextType === 'PICK_ONE'
-                            ? currentOptions.length
-                              ? currentOptions
-                              : [createEditableOption(), createEditableOption()]
-                            : [],
-                      },
-                    };
-                  })
+                  updateItem(item.localId, (current) => ({
+                    ...current,
+                    audioUrl: e.target.value,
+                  }))
                 }
                 className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              >
-                {TASK_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
+                placeholder="/media/audio/file.mp3 or https://cdn.example.com/audio/file.mp3"
+              />
+              <p className="mt-2 text-xs text-slate-500">
+                Paste an absolute audio URL, or upload a local file and let admin fill the backend
+                media URL automatically.
+              </p>
+              <div className="mt-3 space-y-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3">
+                <label className="block text-xs font-medium text-slate-500">
+                  Upload audio to backend media folder
+                </label>
+                <input
+                  type="file"
+                  accept="audio/*"
+                  onChange={(e) => {
+                    const selectedFile = e.target.files?.[0];
+                    if (!selectedFile) {
+                      return;
+                    }
+
+                    void handleAudioUpload(item.localId, selectedFile);
+                    e.currentTarget.value = '';
+                  }}
+                  disabled={uploadLessonAudio.isPending}
+                  className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-xs file:font-medium file:text-white hover:file:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+                <p className="text-xs text-slate-500">
+                  Dev/demo behavior: this uploads directly into
+                  {' '}
+                  <code className="rounded bg-slate-100 px-1 py-0.5">backend/public/audio</code>
+                  {' '}
+                  and stores the returned
+                  {' '}
+                  <code className="rounded bg-slate-100 px-1 py-0.5">/media/audio/...</code>
+                  {' '}
+                  path in this item.
+                </p>
+                {uploadingItemLocalId === item.localId ? (
+                  <p className="text-xs text-brand-600">Uploading audio…</p>
+                ) : null}
+              </div>
             </div>
-            {(taskEdits[task.id]?.type ?? task.type) === 'PICK_ONE' && (
-              <div className="space-y-2">
-                {(taskEdits[task.id]?.options ?? []).map((option, idx) => (
-                  <div key={option.localId} className="flex items-center gap-2">
-                    <input
-                      value={option.label}
-                      onChange={(e) =>
-                        setTaskEdits((prev) => ({
-                          ...prev,
-                          [task.id]: {
-                            ...prev[task.id],
-                            options: (prev[task.id]?.options ?? []).map((opt) =>
-                              opt.localId === option.localId
-                                ? { ...opt, label: e.target.value }
-                                : opt,
-                            ),
-                          },
-                        }))
-                      }
-                      className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      placeholder={`Option ${idx + 1}`}
-                    />
-                    <label className="flex items-center gap-1 text-xs text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={option.isCorrect}
-                        onChange={(e) =>
-                          setTaskEdits((prev) => ({
-                            ...prev,
-                            [task.id]: {
-                              ...prev[task.id],
-                              options: (prev[task.id]?.options ?? []).map((opt) =>
-                                opt.localId === option.localId
-                                  ? { ...opt, isCorrect: e.target.checked }
-                                  : opt,
-                              ),
-                            },
-                          }))
-                        }
-                      />
-                      Correct
-                    </label>
-                    {(taskEdits[task.id]?.options ?? []).length > 2 && (
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-medium text-slate-500">Phrase Timings</label>
+                <button
+                  type="button"
+                  onClick={() => addSegment(item.localId)}
+                  className="text-xs text-brand-600"
+                >
+                  + Add phrase
+                </button>
+              </div>
+
+              {item.segments.map((segment) => (
+                <div
+                  key={segment.localId}
+                  className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <p className="text-xs font-medium text-slate-500">Segment</p>
+                    {item.segments.length > 1 && (
                       <button
                         type="button"
+                        onClick={() => removeSegment(item.localId, segment.localId)}
                         className="text-xs text-rose-600"
-                        onClick={() =>
-                          setTaskEdits((prev) => ({
-                            ...prev,
-                            [task.id]: {
-                              ...prev[task.id],
-                              options: (prev[task.id]?.options ?? []).filter(
-                                (opt) => opt.localId !== option.localId,
-                              ),
-                            },
-                          }))
-                        }
                       >
                         Remove
                       </button>
                     )}
                   </div>
-                ))}
-                <button
-                  type="button"
-                  className="text-xs text-brand-600"
-                  onClick={() =>
-                    setTaskEdits((prev) => ({
-                      ...prev,
-                      [task.id]: {
-                        ...prev[task.id],
-                        options: [
-                          ...(prev[task.id]?.options ?? []),
-                          createEditableOption(),
-                        ],
-                      },
-                    }))
-                  }
-                >
-                  + Add option
-                </button>
-              </div>
-            )}
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => handleTaskSave(task.id)}
-                className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white"
-                disabled={updateLesson.isPending}
-              >
-                Save task
-              </button>
-              {taskMessages[task.id] && (
-                <p className="text-xs text-slate-500">{taskMessages[task.id]}</p>
-              )}
+                  <textarea
+                    value={segment.text}
+                    onChange={(e) =>
+                      updateItem(item.localId, (current) => ({
+                        ...current,
+                        segments: current.segments.map((entry) =>
+                          entry.localId === segment.localId
+                            ? { ...entry, text: e.target.value }
+                            : entry,
+                        ),
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    rows={2}
+                    placeholder="Phrase text"
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500">Start (ms)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={segment.startMs}
+                        onChange={(e) =>
+                          updateItem(item.localId, (current) => ({
+                            ...current,
+                            segments: current.segments.map((entry) =>
+                              entry.localId === segment.localId
+                                ? { ...entry, startMs: Number(e.target.value) }
+                                : entry,
+                            ),
+                          }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-500">End (ms)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={segment.endMs}
+                        onChange={(e) =>
+                          updateItem(item.localId, (current) => ({
+                            ...current,
+                            segments: current.segments.map((entry) =>
+                              entry.localId === segment.localId
+                                ? { ...entry, endMs: Number(e.target.value) }
+                                : entry,
+                            ),
+                          }))
+                        }
+                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ))}
-        {!tasks.length && <p className="text-sm text-slate-500">No tasks yet.</p>}
       </div>
     );
-  }, [
-    deleteTask.isPending,
-    error,
-    handleTaskSave,
-    isLoading,
-    lesson,
-    taskEdits,
-    taskMessages,
-    tasks,
-    updateLesson.isPending,
-  ]);
+  };
 
   return (
     <div className="space-y-4">
@@ -558,7 +445,7 @@ useEffect(() => {
         </span>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         <form
           className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
           onSubmit={handleLessonSubmit}
@@ -607,51 +494,29 @@ useEffect(() => {
 
         <div className="space-y-4">
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Tasks</h2>
-            <div className="mt-4">{renderTaskBody}</div>
-          </section>
-
-          <form
-            className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-            onSubmit={handleCreateTask}
-          >
-            <h3 className="text-base font-semibold text-slate-900">Add task</h3>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Prompt</label>
-              <textarea
-                value={newTaskPrompt}
-                onChange={(e) => setNewTaskPrompt(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                rows={3}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Type</label>
-              <select
-                value={newTaskType}
-                onChange={(e) => {
-                  setNewTaskType(e.target.value as TaskType);
-                }}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">Lesson Items</h2>
+              <button
+                type="button"
+                onClick={addItem}
+                className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
               >
-                {TASK_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
+                Add item
+              </button>
             </div>
-            {renderTaskOptions()}
-            {renderAnswersInput()}
-            {taskFeedback && <p className="text-sm text-slate-500">{taskFeedback}</p>}
-            <button
-              type="submit"
-              disabled={!canSubmitTask || createTask.isPending}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {createTask.isPending ? 'Adding…' : 'Add task'}
-            </button>
-          </form>
+            <div className="mt-4 space-y-4">{renderItemsBody()}</div>
+            <div className="mt-4 flex items-center justify-between">
+              {itemsFeedback ? <p className="text-sm text-slate-500">{itemsFeedback}</p> : <span />}
+              <button
+                type="button"
+                onClick={handleItemsSave}
+                disabled={updateLesson.isPending}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {updateLesson.isPending ? 'Saving…' : 'Save items'}
+              </button>
+            </div>
+          </section>
         </div>
       </div>
     </div>

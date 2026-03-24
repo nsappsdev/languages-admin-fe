@@ -59,34 +59,28 @@ export default function LearnerProgressPage() {
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="py-2 pr-3 font-medium">Lesson</th>
                   <th className="py-2 pr-3 font-medium">Status</th>
-                  <th className="py-2 pr-3 font-medium">Attempts</th>
-                  <th className="py-2 pr-3 font-medium">Tasks Completed</th>
-                  <th className="py-2 pr-3 font-medium">Best Score</th>
-                  <th className="py-2 pr-3 font-medium">Last Score</th>
-                  <th className="py-2 pr-3 font-medium">Completion</th>
+                  <th className="py-2 pr-3 font-medium">Items Started</th>
+                  <th className="py-2 pr-3 font-medium">Items Completed</th>
+                  <th className="py-2 pr-3 font-medium">Best Completion</th>
+                  <th className="py-2 pr-3 font-medium">Last Completion</th>
                   <th className="py-2 font-medium">Last Activity</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {lessonSummaries.map((summary) => {
-                  const accuracy = summary.attemptEvents
-                    ? Math.round((summary.correctAttempts / summary.attemptEvents) * 100)
-                    : null;
                   return (
                     <tr key={summary.lessonId} className="text-slate-700">
                       <td className="py-3 pr-3 font-medium text-slate-900">
                         {summary.lessonTitle ?? summary.lessonId}
                       </td>
                       <td className="py-3 pr-3">{summary.lessonStatus ?? 'Unknown'}</td>
-                      <td className="py-3 pr-3">
-                        {summary.correctAttempts}/{summary.attemptEvents}
-                        {accuracy === null ? '' : ` (${accuracy}%)`}
-                      </td>
-                      <td className="py-3 pr-3">{summary.tasksCompleted}</td>
-                      <td className="py-3 pr-3">{summary.bestScore ?? '—'}</td>
-                      <td className="py-3 pr-3">{summary.lastScore ?? '—'}</td>
+                      <td className="py-3 pr-3">{summary.itemsStarted}</td>
+                      <td className="py-3 pr-3">{summary.itemsCompleted}</td>
                       <td className="py-3 pr-3">
                         {summary.bestCompletion === null ? '—' : `${summary.bestCompletion}%`}
+                      </td>
+                      <td className="py-3 pr-3">
+                        {summary.lastCompletion === null ? '—' : `${summary.lastCompletion}%`}
                       </td>
                       <td className="py-3">
                         {new Date(summary.lastActivityAt).toLocaleString()}

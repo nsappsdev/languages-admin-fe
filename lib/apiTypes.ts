@@ -1,19 +1,26 @@
 export type LessonStatus = 'DRAFT' | 'PUBLISHED';
 
-export type TaskType = 'PICK_ONE' | 'FILL_IN_BLANK' | 'MATCH';
-
-export interface TaskOption {
+export interface LessonItemSegment {
   id: string;
-  label: string;
-  isCorrect: boolean;
+  text: string;
+  startMs: number;
+  endMs: number;
 }
 
-export interface TaskSummary {
+export interface LessonItem {
   id: string;
-  prompt: string;
-  type: TaskType;
+  text: string;
+  audioUrl: string;
   order: number;
-  options: TaskOption[];
+  segments: LessonItemSegment[];
+}
+
+export interface UploadedAudioFile {
+  audioUrl: string;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
 }
 
 export type VocabularyKind = 'WORD' | 'PHRASE' | 'SENTENCE';
@@ -39,7 +46,7 @@ export interface LessonSummary {
   title: string;
   description?: string | null;
   status: LessonStatus;
-  tasks: TaskSummary[];
+  items: LessonItem[];
 }
 
 export interface LearnerSummary {
@@ -57,12 +64,10 @@ export interface LearnerLessonProgressSummary {
   lessonTitle: string | null;
   lessonStatus: string | null;
   totalEvents: number;
-  attemptEvents: number;
-  correctAttempts: number;
-  tasksCompleted: number;
-  bestScore: number | null;
-  lastScore: number | null;
+  itemsStarted: number;
+  itemsCompleted: number;
   bestCompletion: number | null;
+  lastCompletion: number | null;
   lastActivityAt: string;
 }
 

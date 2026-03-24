@@ -1,34 +1,33 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { LessonSummary, LessonStatus, TaskType } from '../lib/apiTypes';
+import { LessonItem, LessonStatus, LessonSummary, UploadedAudioFile } from '../lib/apiTypes';
 import { useApiClient } from './useApiClient';
 
 type UpdateLessonInput = {
   lessonId: string;
   data: Partial<Pick<LessonSummary, 'title' | 'description' | 'status'>> & {
-    tasks?: Array<{
+    items?: Array<{
       id?: string;
-      prompt: string;
-      type: TaskType;
+      text: string;
+      audioUrl: string;
       order?: number;
-      config?: Record<string, unknown>;
-      options?: Array<{ id?: string; label: string; isCorrect?: boolean }>;
+      segments: LessonItem['segments'];
     }>;
   };
 };
 
-type CreateTaskInput = {
+type CreateItemInput = {
   lessonId: string;
-  prompt: string;
-  type: TaskType;
+  text: string;
+  audioUrl: string;
   order?: number;
-  config?: Record<string, unknown>;
-  options?: Array<{ label: string; isCorrect?: boolean }>;
+  segments: LessonItem['segments'];
 };
 
-type DeleteTaskInput = { lessonId: string; taskId: string };
+type DeleteItemInput = { lessonId: string; itemId: string };
 type DeleteLessonInput = { lessonId: string };
+type UploadLessonAudioInput = { file: File };
 
 export const useLessonMutations = () => {
   const { request } = useApiClient();
@@ -50,9 +49,9 @@ export const useLessonMutations = () => {
     },
   });
 
-  const createTask = useMutation({
-    mutationFn: ({ lessonId, ...data }: CreateTaskInput) =>
-      request<{ task: { id: string } }>(`/lessons/${lessonId}/tasks`, {
+  const createItem = useMutation({
+    mutationFn: ({ lessonId, ...data }: CreateItemInput) =>
+      request<{ item: { id: string } }>(`/lessons/${lessonId}/items`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -61,9 +60,9 @@ export const useLessonMutations = () => {
     },
   });
 
-  const deleteTask = useMutation({
-    mutationFn: ({ lessonId, taskId }: DeleteTaskInput) =>
-      request<void>(`/lessons/${lessonId}/tasks/${taskId}`, {
+  const deleteItem = useMutation({
+    mutationFn: ({ lessonId, itemId }: DeleteItemInput) =>
+      request<void>(`/lessons/${lessonId}/items/${itemId}`, {
         method: 'DELETE',
       }),
     onSuccess: (_data, variables) => {
@@ -79,5 +78,16 @@ export const useLessonMutations = () => {
     },
   });
 
-  return { updateLesson, createTask, deleteTask, deleteLesson };
+  const uploadLessonAudio = useMutation({
+    mutationFn: async ({ file }: UploadLessonAudioInput) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return request<{ file: UploadedAudioFile }>('/media/audio', {
+        method: 'POST',
+        body: formData,
+      });
+    },
+  });
+
+  return { updateLesson, createItem, deleteItem, deleteLesson, uploadLessonAudio };
 };

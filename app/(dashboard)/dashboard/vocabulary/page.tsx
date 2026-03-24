@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
 import { useToast } from '../../../../components/providers/ToastProvider';
 import { useVocabulary } from '../../../../hooks/useVocabulary';
 import { useVocabularyMutations } from '../../../../hooks/useVocabularyMutations';
@@ -10,9 +9,6 @@ export default function VocabularyPage() {
   const { data, isLoading, error } = useVocabulary();
   const { deleteEntry } = useVocabularyMutations();
   const { notify } = useToast();
-
-  const entries = data?.entries ?? [];
-
   const handleDelete = async (entryId: string) => {
     if (!window.confirm('Delete this vocabulary entry?')) return;
     try {
@@ -26,41 +22,7 @@ export default function VocabularyPage() {
     }
   };
 
-  const content = useMemo(() => {
-    if (isLoading) return <p className="text-sm text-slate-500">Loading entries…</p>;
-    if (error) {
-      return <p className="text-sm text-rose-600">{error.message}</p>;
-    }
-    if (!entries.length) {
-      return <p className="text-sm text-slate-500">No vocabulary entries yet.</p>;
-    }
-    return (
-      <div className="divide-y divide-slate-100">
-        {entries.map((entry) => (
-          <div key={entry.id} className="flex items-center justify-between py-4">
-            <Link href={`/dashboard/vocabulary/${entry.id}`} className="flex-1">
-              <p className="font-semibold text-slate-900">{entry.englishText}</p>
-              <p className="text-xs uppercase text-slate-400">
-                {entry.kind} • {entry.translations.length} translations
-              </p>
-            </Link>
-            <div className="flex items-center gap-3">
-              <Link href={`/dashboard/vocabulary/${entry.id}`} className="text-sm text-brand-600">
-                Edit
-              </Link>
-              <button
-                className="text-sm text-rose-600 disabled:opacity-50"
-                onClick={() => handleDelete(entry.id)}
-                disabled={deleteEntry.isPending}
-              >
-                {deleteEntry.isPending ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }, [deleteEntry.isPending, entries, error, handleDelete, isLoading]);
+  const entries = data?.entries ?? [];
 
   return (
     <div className="space-y-4">
@@ -76,7 +38,39 @@ export default function VocabularyPage() {
           New entry
         </Link>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">{content}</div>
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        {isLoading ? <p className="text-sm text-slate-500">Loading entries…</p> : null}
+        {!isLoading && error ? <p className="text-sm text-rose-600">{error.message}</p> : null}
+        {!isLoading && !error && !entries.length ? (
+          <p className="text-sm text-slate-500">No vocabulary entries yet.</p>
+        ) : null}
+        {!isLoading && !error && entries.length ? (
+          <div className="divide-y divide-slate-100">
+            {entries.map((entry) => (
+              <div key={entry.id} className="flex items-center justify-between py-4">
+                <Link href={`/dashboard/vocabulary/${entry.id}`} className="flex-1">
+                  <p className="font-semibold text-slate-900">{entry.englishText}</p>
+                  <p className="text-xs uppercase text-slate-400">
+                    {entry.kind} • {entry.translations.length} translations
+                  </p>
+                </Link>
+                <div className="flex items-center gap-3">
+                  <Link href={`/dashboard/vocabulary/${entry.id}`} className="text-sm text-brand-600">
+                    Edit
+                  </Link>
+                  <button
+                    className="text-sm text-rose-600 disabled:opacity-50"
+                    onClick={() => handleDelete(entry.id)}
+                    disabled={deleteEntry.isPending}
+                  >
+                    {deleteEntry.isPending ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
