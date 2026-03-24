@@ -7,6 +7,7 @@ import { useLesson } from '../../../../../hooks/useLesson';
 import { useLessonMutations } from '../../../../../hooks/useLessonMutations';
 import { useToast } from '../../../../../components/providers/ToastProvider';
 import { LessonItem, LessonItemSegment, LessonStatus } from '../../../../../lib/apiTypes';
+import { MEDIA_BASE_URL } from '../../../../../lib/config';
 
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
 
@@ -49,7 +50,7 @@ export default function LessonDetailPage() {
   const lessonId = params?.lessonId ?? '';
   const { data, isLoading, error } = useLesson(lessonId);
   const lesson = data?.lesson;
-  const { updateLesson, uploadLessonAudio } = useLessonMutations();
+  const { updateLesson, uploadLessonAudio, deleteLessonAudio } = useLessonMutations();
   const { notify } = useToast();
 
   const [title, setTitle] = useState('');
@@ -59,6 +60,7 @@ export default function LessonDetailPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [itemsFeedback, setItemsFeedback] = useState<string | null>(null);
   const [uploadingItemLocalId, setUploadingItemLocalId] = useState<string | null>(null);
+  const [deletingItemLocalId, setDeletingItemLocalId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!lesson) return;
@@ -208,7 +210,10 @@ export default function LessonDetailPage() {
     setItemsFeedback(null);
 
     try {
-      const response = await uploadLessonAudio.mutateAsync({ file });
+      const response = await uploadLessonAudio.mutateAsync({
+        file,
+        lessonItemId: items.find((item) => item.localId === itemLocalId)?.id,
+      });
       updateItem(itemLocalId, (current) => ({
         ...current,
         audioUrl: response.file.audioUrl,
@@ -221,6 +226,30 @@ export default function LessonDetailPage() {
       notify(message, 'error');
     } finally {
       setUploadingItemLocalId((current) => (current === itemLocalId ? null : current));
+    }
+  };
+
+  const handleAudioDelete = async (itemLocalId: string, audioUrl: string) => {
+    setDeletingItemLocalId(itemLocalId);
+    setItemsFeedback(null);
+
+    try {
+      await deleteLessonAudio.mutateAsync({
+        lessonItemId: items.find((item) => item.localId === itemLocalId)?.id,
+        audioUrl,
+      });
+      updateItem(itemLocalId, (current) => ({
+        ...current,
+        audioUrl: '',
+      }));
+      setItemsFeedback('Audio removed. Upload a replacement before saving items.');
+      notify('Audio deleted');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete audio';
+      setItemsFeedback(message);
+      notify(message, 'error');
+    } finally {
+      setDeletingItemLocalId((current) => (current === itemLocalId ? null : current));
     }
   };
 
@@ -288,56 +317,64 @@ export default function LessonDetailPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-500">Audio URL</label>
-              <input
-                value={item.audioUrl}
-                onChange={(e) =>
-                  updateItem(item.localId, (current) => ({
-                    ...current,
-                    audioUrl: e.target.value,
-                  }))
-                }
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                placeholder="/media/audio/file.mp3 or https://cdn.example.com/audio/file.mp3"
-              />
-              <p className="mt-2 text-xs text-slate-500">
-                Paste an absolute audio URL, or upload a local file and let admin fill the backend
-                media URL automatically.
-              </p>
-              <div className="mt-3 space-y-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3">
-                <label className="block text-xs font-medium text-slate-500">
-                  Upload audio to backend media folder
-                </label>
-                <input
-                  type="file"
-                  accept="audio/*"
-                  onChange={(e) => {
-                    const selectedFile = e.target.files?.[0];
-                    if (!selectedFile) {
-                      return;
-                    }
+              <label className="block text-xs font-medium text-slate-500">Audio File</label>
+              {item.audioUrl ? (
+                <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <audio
+                    controls
+                    preload="none"
+                    className="w-full"
+                    src={`${MEDIA_BASE_URL}${item.audioUrl}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleAudioDelete(item.localId, item.audioUrl);
+                    }}
+                    disabled={deletingItemLocalId === item.localId}
+                    className="rounded-md border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {deletingItemLocalId === item.localId ? 'Deleting audio…' : 'Delete audio'}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Upload only
+                    {' '}
+                    <code className="rounded bg-slate-100 px-1 py-0.5">.mp3</code>
+                    {' '}
+                    or
+                    {' '}
+                    <code className="rounded bg-slate-100 px-1 py-0.5">.wav</code>
+                    {' '}
+                    files.
+                  </p>
+                  <div className="mt-3 space-y-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3">
+                    <label className="block text-xs font-medium text-slate-500">
+                      Upload audio
+                    </label>
+                    <input
+                      type="file"
+                      accept=".mp3,.wav,audio/mpeg,audio/wav,audio/x-wav"
+                      onChange={(e) => {
+                        const selectedFile = e.target.files?.[0];
+                        if (!selectedFile) {
+                          return;
+                        }
 
-                    void handleAudioUpload(item.localId, selectedFile);
-                    e.currentTarget.value = '';
-                  }}
-                  disabled={uploadLessonAudio.isPending}
-                  className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-xs file:font-medium file:text-white hover:file:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-                <p className="text-xs text-slate-500">
-                  Dev/demo behavior: this uploads directly into
-                  {' '}
-                  <code className="rounded bg-slate-100 px-1 py-0.5">backend/public/audio</code>
-                  {' '}
-                  and stores the returned
-                  {' '}
-                  <code className="rounded bg-slate-100 px-1 py-0.5">/media/audio/...</code>
-                  {' '}
-                  path in this item.
-                </p>
-                {uploadingItemLocalId === item.localId ? (
-                  <p className="text-xs text-brand-600">Uploading audio…</p>
-                ) : null}
-              </div>
+                        void handleAudioUpload(item.localId, selectedFile);
+                        e.currentTarget.value = '';
+                      }}
+                      disabled={uploadLessonAudio.isPending}
+                      className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-xs file:font-medium file:text-white hover:file:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    {uploadingItemLocalId === item.localId ? (
+                      <p className="text-xs text-brand-600">Uploading audio…</p>
+                    ) : null}
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="space-y-3">

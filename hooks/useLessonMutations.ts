@@ -27,7 +27,8 @@ type CreateItemInput = {
 
 type DeleteItemInput = { lessonId: string; itemId: string };
 type DeleteLessonInput = { lessonId: string };
-type UploadLessonAudioInput = { file: File };
+type UploadLessonAudioInput = { file: File; lessonItemId?: string };
+type DeleteLessonAudioInput = { lessonItemId?: string; audioUrl: string };
 
 export const useLessonMutations = () => {
   const { request } = useApiClient();
@@ -79,9 +80,12 @@ export const useLessonMutations = () => {
   });
 
   const uploadLessonAudio = useMutation({
-    mutationFn: async ({ file }: UploadLessonAudioInput) => {
+    mutationFn: async ({ file, lessonItemId }: UploadLessonAudioInput) => {
       const formData = new FormData();
       formData.append('file', file);
+      if (lessonItemId) {
+        formData.append('lessonItemId', lessonItemId);
+      }
       return request<{ file: UploadedAudioFile }>('/media/audio', {
         method: 'POST',
         body: formData,
@@ -89,5 +93,20 @@ export const useLessonMutations = () => {
     },
   });
 
-  return { updateLesson, createItem, deleteItem, deleteLesson, uploadLessonAudio };
+  const deleteLessonAudio = useMutation({
+    mutationFn: ({ lessonItemId, audioUrl }: DeleteLessonAudioInput) =>
+      request<void>('/media/audio', {
+        method: 'DELETE',
+        body: JSON.stringify({ lessonItemId, audioUrl }),
+      }),
+  });
+
+  return {
+    updateLesson,
+    createItem,
+    deleteItem,
+    deleteLesson,
+    uploadLessonAudio,
+    deleteLessonAudio,
+  };
 };
