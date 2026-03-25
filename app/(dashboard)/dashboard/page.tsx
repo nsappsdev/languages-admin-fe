@@ -21,9 +21,9 @@ export default function DashboardPage() {
         : 'No published lessons',
     },
     {
-      label: 'Avg Tasks / Lesson',
-      value: stats ? stats.avgTasksPerLesson.toString() : '—',
-      change: stats ? `${stats.totalTasks} tasks total` : 'Loading…',
+      label: 'Avg Items / Lesson',
+      value: stats ? stats.avgItemsPerLesson.toString() : '—',
+      change: stats ? `${stats.totalItems} items total` : 'Loading…',
     },
   ];
 

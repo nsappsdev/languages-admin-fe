@@ -57,7 +57,7 @@ describe('useLessons', () => {
   it('loads lessons data using /lessons endpoint', async () => {
     fetchMock.mockResolvedValueOnce(
       createJsonResponse(200, {
-        lessons: [{ id: 'l1', title: 'Lesson 1', status: 'PUBLISHED', tasks: [] }],
+        lessons: [{ id: 'l1', title: 'Lesson 1', status: 'PUBLISHED', items: [] }],
       }) as unknown as Response,
     );
 

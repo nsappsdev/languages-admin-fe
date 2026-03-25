@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useLessons } from '../../../../hooks/useLessons';
 import { useLessonMutations } from '../../../../hooks/useLessonMutations';
 import { useToast } from '../../../../components/providers/ToastProvider';
@@ -32,52 +32,12 @@ export default function LessonsPage() {
     }
   };
 
-  const content = useMemo(() => {
-    if (isLoading) {
-      return <p className="text-sm text-slate-500">Loading lessons…</p>;
-    }
-    if (error) {
-      return (
-        <p className="text-sm text-rose-600">Failed to load lessons: {error.message}</p>
-      );
-    }
-    if (!lessons.length) {
-      return <p className="text-sm text-slate-500">No lessons yet. Create one to begin.</p>;
-    }
-    return (
-      <div className="divide-y divide-slate-100">
-        {lessons.map((lesson) => (
-          <div key={lesson.id} className="flex items-center justify-between py-4">
-            <Link href={`/dashboard/lessons/${lesson.id}`} className="flex-1">
-              <p className="text-base font-semibold text-slate-900">{lesson.title}</p>
-              <p className="text-sm text-slate-500">
-                {lesson.tasks.length} tasks • {lesson.status}
-              </p>
-            </Link>
-            <div className="flex items-center gap-3">
-              <Link href={`/dashboard/lessons/${lesson.id}`} className="text-sm text-brand-600">
-                View
-              </Link>
-              <button
-                className="text-sm text-rose-600 disabled:opacity-50"
-                onClick={() => handleDelete(lesson.id)}
-                disabled={pendingId === lesson.id}
-              >
-                {pendingId === lesson.id ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }, [error, isLoading, lessons, pendingId]);
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Lessons</h1>
-          <p className="text-sm text-slate-500">Manage learning content and tasks.</p>
+          <p className="text-sm text-slate-500">Manage text and audio lesson content.</p>
         </div>
         <Link
           href="/dashboard/lessons/new"
@@ -88,7 +48,39 @@ export default function LessonsPage() {
       </div>
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         {deleteError && <p className="mb-3 text-sm text-rose-600">{deleteError}</p>}
-        {content}
+        {isLoading ? <p className="text-sm text-slate-500">Loading lessons…</p> : null}
+        {!isLoading && error ? (
+          <p className="text-sm text-rose-600">Failed to load lessons: {error.message}</p>
+        ) : null}
+        {!isLoading && !error && !lessons.length ? (
+          <p className="text-sm text-slate-500">No lessons yet. Create one to begin.</p>
+        ) : null}
+        {!isLoading && !error && lessons.length ? (
+          <div className="divide-y divide-slate-100">
+            {lessons.map((lesson) => (
+              <div key={lesson.id} className="flex items-center justify-between py-4">
+                <Link href={`/dashboard/lessons/${lesson.id}`} className="flex-1">
+                  <p className="text-base font-semibold text-slate-900">{lesson.title}</p>
+                  <p className="text-sm text-slate-500">
+                    {lesson.items.length} items • {lesson.status}
+                  </p>
+                </Link>
+                <div className="flex items-center gap-3">
+                  <Link href={`/dashboard/lessons/${lesson.id}`} className="text-sm text-brand-600">
+                    View
+                  </Link>
+                  <button
+                    className="text-sm text-rose-600 disabled:opacity-50"
+                    onClick={() => handleDelete(lesson.id)}
+                    disabled={pendingId === lesson.id}
+                  >
+                    {pendingId === lesson.id ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

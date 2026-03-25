@@ -10,10 +10,13 @@ export function useApiClient() {
     path: string,
     options: RequestInit = {},
   ): Promise<T> => {
+    const isFormData =
+      typeof FormData !== 'undefined' && options.body instanceof FormData;
+
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...(options ?? {}),
       headers: {
-        'Content-Type': 'application/json',
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...(options.headers ?? {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
