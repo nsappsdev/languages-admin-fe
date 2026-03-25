@@ -113,7 +113,6 @@ export default function LessonDetailPage() {
     const hasInvalidItems = normalizedItems.some(
       (item) =>
         item.text.trim().length < 1 ||
-        item.audioUrl.trim().length < 1 ||
         item.segments.length < 1 ||
         item.segments.some(
           (segment) =>
@@ -125,7 +124,7 @@ export default function LessonDetailPage() {
     );
 
     if (hasInvalidItems) {
-      setItemsFeedback('Each item needs text, an audio URL, and valid phrase timings.');
+      setItemsFeedback('Each item needs text and valid phrase timings. Audio can be uploaded later.');
       return;
     }
 
@@ -482,7 +481,7 @@ export default function LessonDetailPage() {
         </span>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+      <div className="space-y-6">
         <form
           className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
           onSubmit={handleLessonSubmit}
@@ -529,10 +528,18 @@ export default function LessonDetailPage() {
           </button>
         </form>
 
-        <div className="space-y-4">
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between">
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
               <h2 className="text-lg font-semibold text-slate-900">Lesson Items</h2>
+              <p className="text-sm text-slate-500">
+                Words from saved lesson text are added to the global vocabulary automatically. Audio is optional until you upload it.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link href="/dashboard/vocabulary" className="text-sm text-brand-600">
+                Open dictionary
+              </Link>
               <button
                 type="button"
                 onClick={addItem}
@@ -541,20 +548,20 @@ export default function LessonDetailPage() {
                 Add item
               </button>
             </div>
-            <div className="mt-4 space-y-4">{renderItemsBody()}</div>
-            <div className="mt-4 flex items-center justify-between">
-              {itemsFeedback ? <p className="text-sm text-slate-500">{itemsFeedback}</p> : <span />}
-              <button
-                type="button"
-                onClick={handleItemsSave}
-                disabled={updateLesson.isPending}
-                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {updateLesson.isPending ? 'Saving…' : 'Save items'}
-              </button>
-            </div>
-          </section>
-        </div>
+          </div>
+          <div className="mt-4 space-y-4">{renderItemsBody()}</div>
+          <div className="mt-4 flex items-center justify-between">
+            {itemsFeedback ? <p className="text-sm text-slate-500">{itemsFeedback}</p> : <span />}
+            <button
+              type="button"
+              onClick={handleItemsSave}
+              disabled={updateLesson.isPending}
+              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {updateLesson.isPending ? 'Saving…' : 'Save items'}
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );

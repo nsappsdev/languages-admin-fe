@@ -66,6 +66,10 @@ describe('useVocabulary', () => {
             translations: [],
           },
         ],
+        page: 1,
+        pageSize: 10,
+        total: 1,
+        pageCount: 1,
       }) as unknown as Response,
     );
 
@@ -78,7 +82,7 @@ describe('useVocabulary', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `${API_BASE_URL}/vocabulary`,
+      `${API_BASE_URL}/vocabulary?page=1&pageSize=10`,
       expect.objectContaining({
         headers: expect.objectContaining({
           'Content-Type': 'application/json',

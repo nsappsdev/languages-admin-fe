@@ -1,7 +1,12 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { LessonItem, LessonStatus, LessonSummary, UploadedAudioFile } from '../lib/apiTypes';
+import {
+  LessonItem,
+  LessonStatus,
+  LessonSummary,
+  UploadedAudioFile,
+} from '../lib/apiTypes';
 import { useApiClient } from './useApiClient';
 
 type UpdateLessonInput = {
