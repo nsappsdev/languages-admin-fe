@@ -1,12 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { useToast } from '../../../../components/providers/ToastProvider';
 import { useVocabulary } from '../../../../hooks/useVocabulary';
 import { useVocabularyMutations } from '../../../../hooks/useVocabularyMutations';
 
 export default function VocabularyPage() {
-  const { data, isLoading, error } = useVocabulary();
+  const [page, setPage] = useState(1);
+  const { data, isLoading, error } = useVocabulary({ page, pageSize: 10 });
   const { deleteEntry } = useVocabularyMutations();
   const { notify } = useToast();
   const handleDelete = async (entryId: string) => {
@@ -23,6 +25,8 @@ export default function VocabularyPage() {
   };
 
   const entries = data?.entries ?? [];
+  const pageCount = data?.pageCount ?? 1;
+  const total = data?.total ?? 0;
 
   return (
     <div className="space-y-4">
@@ -39,6 +43,10 @@ export default function VocabularyPage() {
         </Link>
       </div>
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between text-sm text-slate-500">
+          <p>Global dictionary. 10 entries per page.</p>
+          <p>Total entries: {total}</p>
+        </div>
         {isLoading ? <p className="text-sm text-slate-500">Loading entries…</p> : null}
         {!isLoading && error ? <p className="text-sm text-rose-600">{error.message}</p> : null}
         {!isLoading && !error && !entries.length ? (
@@ -68,6 +76,29 @@ export default function VocabularyPage() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : null}
+        {!isLoading && !error && pageCount > 1 ? (
+          <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page === 1}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <p className="text-sm text-slate-500">
+              Page {page} of {pageCount}
+            </p>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+              disabled={page === pageCount}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
           </div>
         ) : null}
       </div>

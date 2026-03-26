@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo } from 'react';
 import { useAnalytics } from '../../../hooks/useAnalytics';
 
@@ -65,12 +66,12 @@ export default function DashboardPage() {
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Recent Lesson Activity</h2>
-          <button
+          <Link
+            href="/dashboard/lessons"
             className="text-sm text-brand-600 hover:text-brand-500"
-            onClick={() => window.location.assign('/dashboard/lessons')}
           >
             View lessons
-          </button>
+          </Link>
         </div>
         <div className="mt-4">{activityRows}</div>
       </section>
