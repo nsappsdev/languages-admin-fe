@@ -9,7 +9,7 @@ const NAV_LINKS = [
   { href: '/dashboard/lessons', label: 'Lessons' },
   { href: '/dashboard/vocabulary', label: 'Vocabulary' },
   { href: '/dashboard/learners', label: 'Learners' },
-  { href: '/dashboard/settings', label: 'Settings', disabled: true },
+  { href: '/dashboard/settings', label: 'Settings' },
 ];
 
 export const DashboardShell = ({ children }: PropsWithChildren) => {
@@ -33,10 +33,9 @@ export const DashboardShell = ({ children }: PropsWithChildren) => {
               <button
                 key={item.href}
                 onClick={() => router.push(item.href)}
-                disabled={item.disabled}
                 className={`w-full text-left rounded-md px-3 py-2 text-sm font-medium ${
                   isActive ? 'bg-brand-50 text-brand-600' : 'text-slate-600 hover:bg-slate-100'
-                } ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                }`}
               >
                 {item.label}
               </button>
