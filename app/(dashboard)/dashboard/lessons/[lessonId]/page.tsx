@@ -27,9 +27,10 @@ const createSegment = (): EditableSegment => ({
   endMs: 1000,
 });
 
-const createItem = (order: number): EditableItem => ({
+const createItem = (lessonId: string, order: number): EditableItem => ({
   id: createLocalId(),
   localId: createLocalId(),
+  lessonId,
   text: '',
   audioUrl: '',
   order,
@@ -177,7 +178,7 @@ export default function LessonDetailPage() {
   };
 
   const addItem = () => {
-    setItems((prev) => [...prev, createItem(prev.length)]);
+    setItems((prev) => [...prev, createItem(lessonId, prev.length)]);
     setItemsFeedback(null);
   };
 

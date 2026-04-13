@@ -9,6 +9,7 @@ export interface LessonItemSegment {
 
 export interface LessonItem {
   id: string;
+  lessonId: string;
   text: string;
   audioUrl: string;
   order: number;
@@ -74,4 +75,38 @@ export interface LearnerLessonProgressSummary {
 export interface LearnerProgressSummaryResponse {
   learner: LearnerSummary;
   lessonSummaries: LearnerLessonProgressSummary[];
+}
+
+export const REPETITION_OPTIONS = [1, 2, 3, 5, 10] as const;
+export type RepetitionOption = (typeof REPETITION_OPTIONS)[number];
+
+export const MAIN_FONT_OPTIONS = [
+  'System',
+  'Georgia',
+  'Times New Roman',
+  'Arial',
+  'Helvetica Neue',
+  'Courier New',
+] as const;
+export type MainFontOption = (typeof MAIN_FONT_OPTIONS)[number];
+
+export const TRANSLATION_FONT_OPTIONS = [
+  'System',
+  'Noto Sans Armenian',
+  'Noto Serif Armenian',
+  'Mshtakan',
+  'Arial',
+  'Georgia',
+] as const;
+export type TranslationFontOption = (typeof TRANSLATION_FONT_OPTIONS)[number];
+
+export interface AppSettings {
+  id: string;
+  unknownWordRepetitions: RepetitionOption;
+  mainTextFontFamily: MainFontOption;
+  mainTextFontSize: number;
+  translationFontFamily: TranslationFontOption;
+  translationFontSize: number;
+  createdAt: string;
+  updatedAt: string;
 }
