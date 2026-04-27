@@ -53,17 +53,17 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => (
-          <div key={card.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-sm text-slate-500">{card.label}</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{card.value}</p>
+          <div key={card.label} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+            <p className="text-xs sm:text-sm text-slate-500">{card.label}</p>
+            <p className="mt-2 text-2xl sm:text-3xl font-semibold text-slate-900">{card.value}</p>
             <p className="text-xs text-slate-500">{card.change}</p>
           </div>
         ))}
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Recent Lesson Activity</h2>
           <Link

@@ -29,26 +29,26 @@ export default function LearnerProgressPage() {
         <Link href="/dashboard/learners" className="text-sm text-brand-600">
           ← Back to learners
         </Link>
-        <h1 className="text-2xl font-semibold text-slate-900">{learner.name}</h1>
-        <p className="text-sm text-slate-500">{learner.email}</p>
+        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 truncate">{learner.name}</h1>
+        <p className="text-xs sm:text-sm text-slate-500 truncate">{learner.email}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
           <p className="text-sm text-slate-500">Progress Events</p>
           <p className="mt-2 text-2xl font-semibold text-slate-900">{learner.progressEvents}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
           <p className="text-sm text-slate-500">Saved Vocabulary</p>
           <p className="mt-2 text-2xl font-semibold text-slate-900">{learner.vocabularySaved}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
           <p className="text-sm text-slate-500">Active Lessons</p>
           <p className="mt-2 text-2xl font-semibold text-slate-900">{lessonSummaries.length}</p>
         </div>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Per-Lesson Progress</h2>
         {lessonSummaries.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">No progress events yet for this learner.</p>

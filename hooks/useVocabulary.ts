@@ -1,21 +1,34 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { VocabularyEntry } from '../lib/apiTypes';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { VocabularyEntry, VocabularyKind } from '../lib/apiTypes';
 import { useApiClient } from './useApiClient';
 
 type UseVocabularyOptions = {
   page?: number;
   pageSize?: number;
+  q?: string;
+  kind?: VocabularyKind;
+  tag?: string;
 };
 
 export const useVocabulary = (options: UseVocabularyOptions = {}) => {
   const { request } = useApiClient();
   const page = options.page ?? 1;
-  const pageSize = options.pageSize ?? 10;
+  const pageSize = options.pageSize ?? 25;
+  const q = options.q?.trim() ?? '';
+  const kind = options.kind;
+  const tag = options.tag?.trim() ?? '';
+
+  const params = new URLSearchParams();
+  params.set('page', String(page));
+  params.set('pageSize', String(pageSize));
+  if (q) params.set('q', q);
+  if (kind) params.set('kind', kind);
+  if (tag) params.set('tag', tag);
 
   return useQuery({
-    queryKey: ['vocabulary', page, pageSize],
+    queryKey: ['vocabulary', page, pageSize, q, kind ?? '', tag],
     queryFn: () =>
       request<{
         entries: VocabularyEntry[];
@@ -23,7 +36,8 @@ export const useVocabulary = (options: UseVocabularyOptions = {}) => {
         pageSize: number;
         total: number;
         pageCount: number;
-      }>(`/vocabulary?page=${page}&pageSize=${pageSize}`),
+      }>(`/vocabulary?${params.toString()}`),
+    placeholderData: keepPreviousData,
   });
 };
 

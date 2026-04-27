@@ -34,19 +34,19 @@ export default function LessonsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Lessons</h1>
-          <p className="text-sm text-slate-500">Manage text and audio lesson content.</p>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Lessons</h1>
+          <p className="text-xs sm:text-sm text-slate-500">Manage text and audio lesson content.</p>
         </div>
         <Link
           href="/dashboard/lessons/new"
-          className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
+          className="shrink-0 rounded-lg bg-brand-600 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white"
         >
           New lesson
         </Link>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
         {deleteError && <p className="mb-3 text-sm text-rose-600">{deleteError}</p>}
         {isLoading ? <p className="text-sm text-slate-500">Loading lessons…</p> : null}
         {!isLoading && error ? (

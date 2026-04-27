@@ -57,12 +57,12 @@ export default function LearnersPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Learners</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Learners</h1>
+        <p className="text-xs sm:text-sm text-slate-500">
           Accounts created from the mobile app signup flow.
         </p>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">{content}</div>
+      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">{content}</div>
     </div>
   );
 }

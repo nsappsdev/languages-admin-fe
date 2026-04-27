@@ -33,10 +33,10 @@ export default function NewLessonPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Create Lesson</h1>
-        <p className="text-sm text-slate-500">Draft a new lesson for learners.</p>
+        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Create Lesson</h1>
+        <p className="text-xs sm:text-sm text-slate-500">Draft a new lesson for learners.</p>
       </div>
-      <form className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm" onSubmit={handleSubmit}>
+      <form className="space-y-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm" onSubmit={handleSubmit}>
         <div>
           <label className="block text-sm font-medium text-slate-700">Title</label>
           <input

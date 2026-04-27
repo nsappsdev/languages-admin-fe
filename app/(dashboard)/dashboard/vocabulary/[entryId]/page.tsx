@@ -117,7 +117,7 @@ export default function VocabularyDetailPage() {
       </div>
 
       <form className="space-y-4" onSubmit={handleUpdate}>
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700">English text</label>
             <input
@@ -168,7 +168,7 @@ export default function VocabularyDetailPage() {
         </div>
       </form>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+      <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm space-y-4">
         <h2 className="text-lg font-semibold text-slate-900">Translations</h2>
         <div className="divide-y divide-slate-100">
           {entry.translations.map((translation) => (

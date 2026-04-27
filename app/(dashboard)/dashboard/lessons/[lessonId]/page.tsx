@@ -484,7 +484,7 @@ export default function LessonDetailPage() {
 
       <div className="space-y-6">
         <form
-          className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+          className="space-y-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm"
           onSubmit={handleLessonSubmit}
         >
           <div>
@@ -529,7 +529,7 @@ export default function LessonDetailPage() {
           </button>
         </form>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Lesson Items</h2>
