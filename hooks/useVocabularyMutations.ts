@@ -1,7 +1,13 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { VocabularyEntry, VocabularyTranslation } from '../lib/apiTypes';
+import {
+  BulkDeleteResult,
+  BulkImportResult,
+  BulkImportRow,
+  VocabularyEntry,
+  VocabularyTranslation,
+} from '../lib/apiTypes';
 import { useApiClient } from './useApiClient';
 
 type CreateEntryInput = {
@@ -78,5 +84,40 @@ export const useVocabularyMutations = () => {
     onSuccess: (_data, vars) => invalidate(vars.entryId),
   });
 
-  return { createEntry, updateEntry, deleteEntry, addTranslation, deleteTranslation };
+  const bulkImport = useMutation({
+    mutationFn: (input: { targetLanguageCode: string; rows: BulkImportRow[] }) =>
+      request<BulkImportResult>('/vocabulary/bulk-import', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => invalidate(),
+  });
+
+  const bulkDelete = useMutation({
+    mutationFn: (ids: string[]) =>
+      request<BulkDeleteResult>('/vocabulary/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      }),
+    onSuccess: () => invalidate(),
+  });
+
+  const deleteAll = useMutation({
+    mutationFn: () =>
+      request<BulkDeleteResult>('/vocabulary/all', {
+        method: 'DELETE',
+      }),
+    onSuccess: () => invalidate(),
+  });
+
+  return {
+    createEntry,
+    updateEntry,
+    deleteEntry,
+    addTranslation,
+    deleteTranslation,
+    bulkImport,
+    bulkDelete,
+    deleteAll,
+  };
 };

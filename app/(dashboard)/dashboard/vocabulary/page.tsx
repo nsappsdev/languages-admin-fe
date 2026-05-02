@@ -22,6 +22,9 @@ export default function VocabularyPage() {
   const [searchInput, setSearchInput] = useState('');
   const [kind, setKind] = useState<'' | VocabularyKind>('');
   const [tagInput, setTagInput] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
 
   const debouncedSearch = useDebounce(searchInput, 300);
   const debouncedTag = useDebounce(tagInput, 300);
@@ -39,8 +42,41 @@ export default function VocabularyPage() {
     tag: debouncedTag || undefined,
   });
 
-  const { deleteEntry } = useVocabularyMutations();
+  const { deleteEntry, bulkDelete, deleteAll } = useVocabularyMutations();
   const { notify } = useToast();
+
+  const entries = data?.entries ?? [];
+  const pageCount = data?.pageCount ?? 1;
+  const total = data?.total ?? 0;
+  const hasFilters = Boolean(debouncedSearch || kind || debouncedTag);
+
+  // Reset selection when page or filters change
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page, debouncedSearch, kind, debouncedTag]);
+
+  const allOnPageSelected = entries.length > 0 && entries.every((e) => selectedIds.has(e.id));
+
+  const toggleAllOnPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allOnPageSelected) {
+        entries.forEach((e) => next.delete(e.id));
+      } else {
+        entries.forEach((e) => next.add(e.id));
+      }
+      return next;
+    });
+  };
+
+  const toggleOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleDelete = async (entryId: string) => {
     if (!window.confirm('Delete this vocabulary entry?')) return;
@@ -52,10 +88,29 @@ export default function VocabularyPage() {
     }
   };
 
-  const entries = data?.entries ?? [];
-  const pageCount = data?.pageCount ?? 1;
-  const total = data?.total ?? 0;
-  const hasFilters = Boolean(debouncedSearch || kind || debouncedTag);
+  const handleBulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} vocabulary ${ids.length === 1 ? 'entry' : 'entries'}?`)) return;
+    try {
+      const result = await bulkDelete.mutateAsync(ids);
+      notify(`Deleted ${result.deleted} entries`);
+      setSelectedIds(new Set());
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Bulk delete failed', 'error');
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    try {
+      const result = await deleteAll.mutateAsync();
+      notify(`Deleted ${result.deleted} entries`);
+      setDeleteAllOpen(false);
+      setDeleteAllConfirmText('');
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Delete all failed', 'error');
+    }
+  };
 
   const clearFilters = () => {
     setSearchInput('');
@@ -70,12 +125,20 @@ export default function VocabularyPage() {
           <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Vocabulary</h1>
           <p className="text-xs sm:text-sm text-slate-500">Search and manage the global library.</p>
         </div>
-        <Link
-          href="/dashboard/vocabulary/new"
-          className="shrink-0 rounded-lg bg-brand-600 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white"
-        >
-          New entry
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            href="/dashboard/vocabulary/import"
+            className="rounded-lg border border-brand-600 bg-white px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-brand-600"
+          >
+            Import CSV
+          </Link>
+          <Link
+            href="/dashboard/vocabulary/new"
+            className="rounded-lg bg-brand-600 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white"
+          >
+            New entry
+          </Link>
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -134,34 +197,73 @@ export default function VocabularyPage() {
           </p>
         ) : null}
         {!isLoading && !error && entries.length ? (
-          <div className="divide-y divide-slate-100">
-            {entries.map((entry) => (
-              <div key={entry.id} className="flex items-center justify-between gap-2 py-3">
-                <Link href={`/dashboard/vocabulary/${entry.id}`} className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-900 truncate">{entry.englishText}</p>
-                  <p className="text-xs uppercase text-slate-400 truncate">
-                    {entry.kind} • {entry.translations.length} translations
-                    {entry.tags.length ? ` • ${entry.tags.join(', ')}` : ''}
-                  </p>
-                </Link>
-                <div className="flex items-center gap-3 shrink-0">
-                  <Link
-                    href={`/dashboard/vocabulary/${entry.id}`}
-                    className="text-sm text-brand-600"
-                  >
-                    Edit
-                  </Link>
+          <>
+            <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-2 flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 sm:-mx-4 sm:-mt-4 sm:px-4">
+              <label className="flex items-center gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={allOnPageSelected}
+                  onChange={toggleAllOnPage}
+                  className="h-4 w-4"
+                />
+                {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select all on page'}
+              </label>
+              {selectedIds.size > 0 ? (
+                <div className="flex items-center gap-2">
                   <button
-                    className="text-sm text-rose-600 disabled:opacity-50"
-                    onClick={() => handleDelete(entry.id)}
-                    disabled={deleteEntry.isPending}
+                    type="button"
+                    onClick={handleBulkDelete}
+                    disabled={bulkDelete.isPending}
+                    className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                   >
-                    {deleteEntry.isPending ? '…' : 'Delete'}
+                    {bulkDelete.isPending ? 'Deleting…' : `Delete ${selectedIds.size}`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(new Set())}
+                    className="text-xs text-slate-600"
+                  >
+                    Cancel
                   </button>
                 </div>
-              </div>
-            ))}
-          </div>
+              ) : null}
+            </div>
+            <div className="divide-y divide-slate-100">
+              {entries.map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between gap-2 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(entry.id)}
+                    onChange={() => toggleOne(entry.id)}
+                    className="h-4 w-4 shrink-0"
+                    aria-label={`Select ${entry.englishText}`}
+                  />
+                  <Link href={`/dashboard/vocabulary/${entry.id}`} className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-900 truncate">{entry.englishText}</p>
+                    <p className="text-xs uppercase text-slate-400 truncate">
+                      {entry.kind} • {entry.translations.length} translations
+                      {entry.tags.length ? ` • ${entry.tags.join(', ')}` : ''}
+                    </p>
+                  </Link>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <Link
+                      href={`/dashboard/vocabulary/${entry.id}`}
+                      className="text-sm text-brand-600"
+                    >
+                      Edit
+                    </Link>
+                    <button
+                      className="text-sm text-rose-600 disabled:opacity-50"
+                      onClick={() => handleDelete(entry.id)}
+                      disabled={deleteEntry.isPending}
+                    >
+                      {deleteEntry.isPending ? '…' : 'Delete'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         ) : null}
 
         {!isLoading && !error && pageCount > 1 ? (
@@ -188,6 +290,68 @@ export default function VocabularyPage() {
           </div>
         ) : null}
       </div>
+
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 sm:p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-rose-900">Danger zone</p>
+            <p className="text-xs text-rose-700">
+              Permanently delete every vocabulary entry and all associated translations, learner words,
+              and lesson dictionary references.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDeleteAllOpen(true)}
+            className="shrink-0 rounded-lg border border-rose-600 bg-white px-3 py-2 text-xs sm:text-sm font-semibold text-rose-600"
+          >
+            Delete all
+          </button>
+        </div>
+      </div>
+
+      {deleteAllOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
+            <h2 className="text-lg font-semibold text-slate-900">Delete all vocabulary?</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              This will delete <span className="font-semibold">{total}</span> entries and cascade to
+              remove them from every learner&apos;s saved words and every lesson dictionary. This
+              cannot be undone.
+            </p>
+            <p className="mt-3 text-sm text-slate-700">
+              Type <span className="font-mono font-semibold">DELETE ALL</span> to confirm:
+            </p>
+            <input
+              type="text"
+              value={deleteAllConfirmText}
+              onChange={(e) => setDeleteAllConfirmText(e.target.value)}
+              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-rose-500 focus:outline-none"
+              autoFocus
+            />
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteAllOpen(false);
+                  setDeleteAllConfirmText('');
+                }}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAll}
+                disabled={deleteAllConfirmText !== 'DELETE ALL' || deleteAll.isPending}
+                className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {deleteAll.isPending ? 'Deleting…' : 'Delete all'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

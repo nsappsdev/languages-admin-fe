@@ -110,3 +110,23 @@ export interface AppSettings {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface BulkImportRow {
+  englishText: string;
+  translation: string;
+  kind?: VocabularyKind;
+  notes?: string;
+  tags?: string[];
+  usageExample?: string;
+}
+
+export interface BulkImportResult {
+  created: number;
+  mergedTranslations: number;
+  skipped: number;
+  errors: Array<{ row: number; message: string }>;
+}
+
+export interface BulkDeleteResult {
+  deleted: number;
+}
