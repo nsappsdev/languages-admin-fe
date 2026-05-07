@@ -4,15 +4,22 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useToast } from '../../../../components/providers/ToastProvider';
 import { useDebounce } from '../../../../hooks/useDebounce';
-import { useVocabulary } from '../../../../hooks/useVocabulary';
+import { useVocabulary, type VocabularyTranslatedFilter } from '../../../../hooks/useVocabulary';
 import { useVocabularyMutations } from '../../../../hooks/useVocabularyMutations';
 import { VocabularyKind } from '../../../../lib/apiTypes';
+import { ConfirmDialog } from '../../../../components/ui/ConfirmDialog';
 
 const KIND_OPTIONS: Array<{ value: '' | VocabularyKind; label: string }> = [
   { value: '', label: 'All types' },
   { value: 'WORD', label: 'Word' },
   { value: 'PHRASE', label: 'Phrase' },
   { value: 'SENTENCE', label: 'Sentence' },
+];
+
+const TRANSLATED_OPTIONS: Array<{ value: '' | VocabularyTranslatedFilter; label: string }> = [
+  { value: '', label: 'Any translation status' },
+  { value: 'translated', label: 'Has translation' },
+  { value: 'untranslated', label: 'No translation' },
 ];
 
 const PAGE_SIZE = 25;
@@ -22,9 +29,11 @@ export default function VocabularyPage() {
   const [searchInput, setSearchInput] = useState('');
   const [kind, setKind] = useState<'' | VocabularyKind>('');
   const [tagInput, setTagInput] = useState('');
+  const [translated, setTranslated] = useState<'' | VocabularyTranslatedFilter>('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
-  const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
 
   const debouncedSearch = useDebounce(searchInput, 300);
   const debouncedTag = useDebounce(tagInput, 300);
@@ -32,7 +41,7 @@ export default function VocabularyPage() {
   // Reset page on filter change
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, kind, debouncedTag]);
+  }, [debouncedSearch, kind, debouncedTag, translated]);
 
   const { data, isLoading, isFetching, error } = useVocabulary({
     page,
@@ -40,6 +49,7 @@ export default function VocabularyPage() {
     q: debouncedSearch || undefined,
     kind: kind || undefined,
     tag: debouncedTag || undefined,
+    translated: translated || undefined,
   });
 
   const { deleteEntry, bulkDelete, deleteAll } = useVocabularyMutations();
@@ -48,12 +58,12 @@ export default function VocabularyPage() {
   const entries = data?.entries ?? [];
   const pageCount = data?.pageCount ?? 1;
   const total = data?.total ?? 0;
-  const hasFilters = Boolean(debouncedSearch || kind || debouncedTag);
+  const hasFilters = Boolean(debouncedSearch || kind || debouncedTag || translated);
 
   // Reset selection when page or filters change
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [page, debouncedSearch, kind, debouncedTag]);
+  }, [page, debouncedSearch, kind, debouncedTag, translated]);
 
   const allOnPageSelected = entries.length > 0 && entries.every((e) => selectedIds.has(e.id));
 
@@ -78,11 +88,12 @@ export default function VocabularyPage() {
     });
   };
 
-  const handleDelete = async (entryId: string) => {
-    if (!window.confirm('Delete this vocabulary entry?')) return;
+  const handleDelete = async () => {
+    if (!deleteEntryId) return;
     try {
-      await deleteEntry.mutateAsync(entryId);
+      await deleteEntry.mutateAsync(deleteEntryId);
       notify('Vocabulary entry deleted');
+      setDeleteEntryId(null);
     } catch (err) {
       notify(err instanceof Error ? err.message : 'Failed to delete entry', 'error');
     }
@@ -91,11 +102,11 @@ export default function VocabularyPage() {
   const handleBulkDelete = async () => {
     const ids = [...selectedIds];
     if (!ids.length) return;
-    if (!window.confirm(`Delete ${ids.length} vocabulary ${ids.length === 1 ? 'entry' : 'entries'}?`)) return;
     try {
       const result = await bulkDelete.mutateAsync(ids);
       notify(`Deleted ${result.deleted} entries`);
       setSelectedIds(new Set());
+      setBulkDeleteOpen(false);
     } catch (err) {
       notify(err instanceof Error ? err.message : 'Bulk delete failed', 'error');
     }
@@ -106,7 +117,6 @@ export default function VocabularyPage() {
       const result = await deleteAll.mutateAsync();
       notify(`Deleted ${result.deleted} entries`);
       setDeleteAllOpen(false);
-      setDeleteAllConfirmText('');
     } catch (err) {
       notify(err instanceof Error ? err.message : 'Delete all failed', 'error');
     }
@@ -116,6 +126,7 @@ export default function VocabularyPage() {
     setSearchInput('');
     setKind('');
     setTagInput('');
+    setTranslated('');
   };
 
   return (
@@ -169,6 +180,17 @@ export default function VocabularyPage() {
             placeholder="Tag"
             className="sm:w-32 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
           />
+          <select
+            value={translated}
+            onChange={(e) => setTranslated(e.target.value as '' | VocabularyTranslatedFilter)}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+          >
+            {TRANSLATED_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center justify-between text-xs text-slate-500">
           <span>
@@ -212,7 +234,7 @@ export default function VocabularyPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={handleBulkDelete}
+                    onClick={() => setBulkDeleteOpen(true)}
                     disabled={bulkDelete.isPending}
                     className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                   >
@@ -254,7 +276,7 @@ export default function VocabularyPage() {
                     </Link>
                     <button
                       className="text-sm text-rose-600 disabled:opacity-50"
-                      onClick={() => handleDelete(entry.id)}
+                      onClick={() => setDeleteEntryId(entry.id)}
                       disabled={deleteEntry.isPending}
                     >
                       {deleteEntry.isPending ? '…' : 'Delete'}
@@ -310,47 +332,49 @@ export default function VocabularyPage() {
         </div>
       </div>
 
+      {deleteEntryId ? (
+        <ConfirmDialog
+          title="Delete vocabulary entry?"
+          description="This will permanently delete this entry and cascade to translations, learner words, and lesson dictionary references."
+          confirmLabel="Delete"
+          tone="danger"
+          isPending={deleteEntry.isPending}
+          onCancel={() => setDeleteEntryId(null)}
+          onConfirm={() => {
+            void handleDelete();
+          }}
+        />
+      ) : null}
+
+      {bulkDeleteOpen ? (
+        <ConfirmDialog
+          title="Delete selected vocabulary?"
+          description={`This will permanently delete ${selectedIds.size} selected ${
+            selectedIds.size === 1 ? 'entry' : 'entries'
+          } and all associated translations, learner words, and lesson dictionary references.`}
+          confirmLabel="Delete selected"
+          tone="danger"
+          isPending={bulkDelete.isPending}
+          onCancel={() => setBulkDeleteOpen(false)}
+          onConfirm={() => {
+            void handleBulkDelete();
+          }}
+        />
+      ) : null}
+
       {deleteAllOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg">
-            <h2 className="text-lg font-semibold text-slate-900">Delete all vocabulary?</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              This will delete <span className="font-semibold">{total}</span> entries and cascade to
-              remove them from every learner&apos;s saved words and every lesson dictionary. This
-              cannot be undone.
-            </p>
-            <p className="mt-3 text-sm text-slate-700">
-              Type <span className="font-mono font-semibold">DELETE ALL</span> to confirm:
-            </p>
-            <input
-              type="text"
-              value={deleteAllConfirmText}
-              onChange={(e) => setDeleteAllConfirmText(e.target.value)}
-              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-rose-500 focus:outline-none"
-              autoFocus
-            />
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteAllOpen(false);
-                  setDeleteAllConfirmText('');
-                }}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteAll}
-                disabled={deleteAllConfirmText !== 'DELETE ALL' || deleteAll.isPending}
-                className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {deleteAll.isPending ? 'Deleting…' : 'Delete all'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete all vocabulary?"
+          description={`This will delete ${total} entries and cascade to remove them from every learner's saved words and every lesson dictionary. This cannot be undone.`}
+          confirmLabel="Delete all"
+          confirmText="DELETE ALL"
+          tone="danger"
+          isPending={deleteAll.isPending}
+          onCancel={() => setDeleteAllOpen(false)}
+          onConfirm={() => {
+            void handleDeleteAll();
+          }}
+        />
       ) : null}
     </div>
   );

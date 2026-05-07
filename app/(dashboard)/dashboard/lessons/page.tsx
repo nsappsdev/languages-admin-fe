@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useLessons } from '../../../../hooks/useLessons';
 import { useLessonMutations } from '../../../../hooks/useLessonMutations';
 import { useToast } from '../../../../components/providers/ToastProvider';
+import { ConfirmDialog } from '../../../../components/ui/ConfirmDialog';
 
 export default function LessonsPage() {
   const { data, isLoading, error } = useLessons();
@@ -13,16 +14,17 @@ export default function LessonsPage() {
   const lessons = data?.lessons ?? [];
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const handleDelete = async (lessonId: string) => {
-    if (!window.confirm('Delete this lesson? This cannot be undone.')) {
-      return;
-    }
+  const handleDelete = async () => {
+    if (!confirmDeleteId) return;
+    const lessonId = confirmDeleteId;
     setPendingId(lessonId);
     setDeleteError(null);
     try {
       await deleteLesson.mutateAsync({ lessonId });
       notify('Lesson deleted');
+      setConfirmDeleteId(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete lesson';
       setDeleteError(message);
@@ -71,7 +73,7 @@ export default function LessonsPage() {
                   </Link>
                   <button
                     className="text-sm text-rose-600 disabled:opacity-50"
-                    onClick={() => handleDelete(lesson.id)}
+                    onClick={() => setConfirmDeleteId(lesson.id)}
                     disabled={pendingId === lesson.id}
                   >
                     {pendingId === lesson.id ? 'Deleting…' : 'Delete'}
@@ -82,6 +84,19 @@ export default function LessonsPage() {
           </div>
         ) : null}
       </div>
+      {confirmDeleteId ? (
+        <ConfirmDialog
+          title="Delete lesson?"
+          description="This will permanently delete the lesson, its items, and lesson dictionary state. This cannot be undone."
+          confirmLabel="Delete"
+          tone="danger"
+          isPending={pendingId === confirmDeleteId}
+          onCancel={() => setConfirmDeleteId(null)}
+          onConfirm={() => {
+            void handleDelete();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

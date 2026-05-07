@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 import { useToast } from '../../../../../components/providers/ToastProvider';
+import { ConfirmDialog } from '../../../../../components/ui/ConfirmDialog';
 import { useVocabularyEntry } from '../../../../../hooks/useVocabulary';
 import { useVocabularyMutations } from '../../../../../hooks/useVocabularyMutations';
 import { VocabularyKind } from '../../../../../lib/apiTypes';
@@ -26,6 +27,7 @@ export default function VocabularyDetailPage() {
   const [translationLang, setTranslationLang] = useState('am');
   const [translationText, setTranslationText] = useState('');
   const [translationUsage, setTranslationUsage] = useState('');
+  const [deleteEntryOpen, setDeleteEntryOpen] = useState(false);
 
   useEffect(() => {
     if (entry) {
@@ -78,7 +80,6 @@ export default function VocabularyDetailPage() {
 
   const handleDeleteEntry = async () => {
     if (!entryId) return;
-    if (!window.confirm('Delete this vocabulary entry?')) return;
     try {
       await deleteEntry.mutateAsync(entryId);
       notify('Entry deleted');
@@ -111,7 +112,7 @@ export default function VocabularyDetailPage() {
         <Link href="/dashboard/vocabulary" className="text-sm text-brand-600">
           ← Back to vocabulary
         </Link>
-        <button onClick={handleDeleteEntry} className="text-sm text-rose-600">
+        <button onClick={() => setDeleteEntryOpen(true)} className="text-sm text-rose-600">
           Delete entry
         </button>
       </div>
@@ -226,6 +227,19 @@ export default function VocabularyDetailPage() {
           </button>
         </form>
       </section>
+      {deleteEntryOpen ? (
+        <ConfirmDialog
+          title="Delete vocabulary entry?"
+          description="This will permanently delete this entry and cascade to translations, learner words, and lesson dictionary references."
+          confirmLabel="Delete"
+          tone="danger"
+          isPending={deleteEntry.isPending}
+          onCancel={() => setDeleteEntryOpen(false)}
+          onConfirm={() => {
+            void handleDeleteEntry();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

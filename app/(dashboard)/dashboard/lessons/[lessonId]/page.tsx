@@ -6,8 +6,17 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useLesson } from '../../../../../hooks/useLesson';
 import { useLessonMutations } from '../../../../../hooks/useLessonMutations';
 import { useToast } from '../../../../../components/providers/ToastProvider';
-import { LessonItem, LessonItemSegment, LessonStatus } from '../../../../../lib/apiTypes';
+import {
+  LessonDictionaryCoverageItem,
+  LessonItem,
+  LessonItemSegment,
+  LessonStatus,
+} from '../../../../../lib/apiTypes';
 import { MEDIA_BASE_URL } from '../../../../../lib/config';
+import {
+  buildMissingTranslationsCsv,
+  buildMissingTranslationsFilename,
+} from '../../../../../lib/lessonMissingTranslationsCsv';
 
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
 
@@ -25,16 +34,6 @@ const createSegment = (): EditableSegment => ({
   text: '',
   startMs: 0,
   endMs: 1000,
-});
-
-const createItem = (lessonId: string, order: number): EditableItem => ({
-  id: createLocalId(),
-  localId: createLocalId(),
-  lessonId,
-  text: '',
-  audioUrl: '',
-  order,
-  segments: [createSegment()],
 });
 
 const toEditableItem = (item: LessonItem): EditableItem => ({
@@ -75,6 +74,11 @@ export default function LessonDetailPage() {
     () => [...items].sort((left, right) => left.order - right.order),
     [items],
   );
+  const dictionaryCoverage = lesson?.dictionaryCoverage ?? [];
+  const missingArmenianTranslations = dictionaryCoverage.filter(
+    (item) => !item.hasArmenianTranslation,
+  );
+  const armenianTranslatedCount = dictionaryCoverage.length - missingArmenianTranslations.length;
 
   const normalizeItems = (currentItems: EditableItem[]): EditableItem[] =>
     currentItems.map((item, index): EditableItem => ({
@@ -177,11 +181,6 @@ export default function LessonDetailPage() {
     });
   };
 
-  const addItem = () => {
-    setItems((prev) => [...prev, createItem(lessonId, prev.length)]);
-    setItemsFeedback(null);
-  };
-
   const removeItem = (localId: string) => {
     setItems((prev) =>
       prev
@@ -251,6 +250,19 @@ export default function LessonDetailPage() {
     } finally {
       setDeletingItemLocalId((current) => (current === itemLocalId ? null : current));
     }
+  };
+
+  const downloadMissingTranslationsCsv = () => {
+    if (!lesson || !missingArmenianTranslations.length) return;
+
+    const csv = buildMissingTranslationsCsv(missingArmenianTranslations, lesson.title);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = buildMissingTranslationsFilename(lesson.title);
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const renderItemsBody = () => {
@@ -471,6 +483,72 @@ export default function LessonDetailPage() {
     );
   };
 
+  const renderDictionaryCoverage = () => {
+    if (!lesson) return null;
+
+    if (!dictionaryCoverage.length) {
+      return (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+          Save lesson text to generate dictionary coverage.
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Dictionary coverage</h3>
+            <p className="text-xs text-slate-500">
+              {armenianTranslatedCount} of {dictionaryCoverage.length} saved terms have Armenian translations.
+              Save item text to refresh this list.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {missingArmenianTranslations.length ? (
+              <button
+                type="button"
+                onClick={downloadMissingTranslationsCsv}
+                className="text-xs font-semibold text-brand-600"
+              >
+                Download missing CSV
+              </button>
+            ) : null}
+            <Link
+              href="/dashboard/vocabulary/import"
+              className="text-xs font-semibold text-brand-600"
+            >
+              Import CSV
+            </Link>
+            <Link
+              href="/dashboard/vocabulary"
+              className="text-xs font-semibold text-brand-600"
+            >
+              Open dictionary
+            </Link>
+          </div>
+        </div>
+
+        {missingArmenianTranslations.length ? (
+          <div className="mt-3">
+            <p className="text-xs font-semibold uppercase text-rose-600">
+              Missing Armenian translations
+            </p>
+            <div className="mt-2 flex max-h-40 flex-wrap gap-2 overflow-y-auto">
+              {missingArmenianTranslations.map((item) => (
+                <CoveragePill key={`${item.kind}:${item.normalizedText}`} item={item} />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-xs font-medium text-emerald-700">
+            All saved lesson terms currently have Armenian translations.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -533,23 +611,14 @@ export default function LessonDetailPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Lesson Items</h2>
-              <p className="text-sm text-slate-500">
-                Words from saved lesson text are added to the global vocabulary automatically. Audio is optional until you upload it.
-              </p>
             </div>
             <div className="flex items-center gap-3">
               <Link href="/dashboard/vocabulary" className="text-sm text-brand-600">
                 Open dictionary
               </Link>
-              <button
-                type="button"
-                onClick={addItem}
-                className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
-              >
-                Add item
-              </button>
             </div>
           </div>
+          <div className="mt-4">{renderDictionaryCoverage()}</div>
           <div className="mt-4 space-y-4">{renderItemsBody()}</div>
           <div className="mt-4 flex items-center justify-between">
             {itemsFeedback ? <p className="text-sm text-slate-500">{itemsFeedback}</p> : <span />}
@@ -565,5 +634,29 @@ export default function LessonDetailPage() {
         </section>
       </div>
     </div>
+  );
+}
+
+function CoveragePill({ item }: { item: LessonDictionaryCoverageItem }) {
+  const content = (
+    <>
+      <span>{item.text}</span>
+      <span className="rounded bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+        {item.kind.toLowerCase()}
+      </span>
+    </>
+  );
+
+  const className =
+    'inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-rose-300 hover:bg-rose-50';
+
+  if (!item.entryId) {
+    return <span className={className}>{content}</span>;
+  }
+
+  return (
+    <Link href={`/dashboard/vocabulary/${item.entryId}`} className={className}>
+      {content}
+    </Link>
   );
 }

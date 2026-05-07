@@ -42,12 +42,24 @@ export interface VocabularyEntry {
   translations: VocabularyTranslation[];
 }
 
+export interface LessonDictionaryCoverageItem {
+  text: string;
+  normalizedText: string;
+  kind: VocabularyKind;
+  entryId: string | null;
+  hasTranslation: boolean;
+  hasArmenianTranslation: boolean;
+  translations: VocabularyTranslation[];
+}
+
 export interface LessonSummary {
   id: string;
   title: string;
   description?: string | null;
   status: LessonStatus;
   items: LessonItem[];
+  dictionary?: VocabularyEntry[];
+  dictionaryCoverage?: LessonDictionaryCoverageItem[];
 }
 
 export interface LearnerSummary {
