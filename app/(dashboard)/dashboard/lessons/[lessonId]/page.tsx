@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useLesson } from '../../../../../hooks/useLesson';
 import { useLessonMutations } from '../../../../../hooks/useLessonMutations';
 import { useToast } from '../../../../../components/providers/ToastProvider';
+import { ConfirmDialog } from '../../../../../components/ui/ConfirmDialog';
 import {
   LessonDictionaryCoverageItem,
   LessonItem,
@@ -28,12 +29,12 @@ const createLocalId = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 
-const createSegment = (): EditableSegment => ({
+const createSegment = (startMs = 0, endMs = startMs + 1000): EditableSegment => ({
   id: createLocalId(),
   localId: createLocalId(),
   text: '',
-  startMs: 0,
-  endMs: 1000,
+  startMs,
+  endMs,
 });
 
 const toEditableItem = (item: LessonItem): EditableItem => ({
@@ -61,6 +62,10 @@ export default function LessonDetailPage() {
   const [itemsFeedback, setItemsFeedback] = useState<string | null>(null);
   const [uploadingItemLocalId, setUploadingItemLocalId] = useState<string | null>(null);
   const [deletingItemLocalId, setDeletingItemLocalId] = useState<string | null>(null);
+  const [deleteAudioTarget, setDeleteAudioTarget] = useState<{
+    itemLocalId: string;
+    audioUrl: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!lesson) return;
@@ -93,9 +98,8 @@ export default function LessonDetailPage() {
       })),
     }));
 
-  const handleLessonSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!lessonId) return;
+  const saveLessonMetadata = async () => {
+    if (!lessonId) return false;
 
     setFeedback(null);
     try {
@@ -104,15 +108,15 @@ export default function LessonDetailPage() {
         data: { title, description, status },
       });
       setFeedback('Lesson saved');
-      notify('Lesson updated');
+      return true;
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : 'Failed to save lesson');
-      notify('Failed to save lesson', 'error');
+      return false;
     }
   };
 
-  const handleItemsSave = async () => {
-    if (!lessonId) return;
+  const saveLessonItems = async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!lessonId) return false;
 
     const normalizedItems = normalizeItems(sortedItems);
     const hasInvalidItems = normalizedItems.some(
@@ -130,7 +134,7 @@ export default function LessonDetailPage() {
 
     if (hasInvalidItems) {
       setItemsFeedback('Each item needs text and valid phrase timings. Audio can be uploaded later.');
-      return;
+      return false;
     }
 
     setItemsFeedback('Saving…');
@@ -154,11 +158,27 @@ export default function LessonDetailPage() {
       });
       setItems((prev) => normalizeItems(prev));
       setItemsFeedback('Items saved');
-      notify('Lesson items updated');
+      if (!silent) {
+        notify('Lesson items updated');
+      }
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save items';
       setItemsFeedback(message);
       notify(message, 'error');
+      return false;
+    }
+  };
+
+  const handleSaveAll = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!lessonId) return;
+
+    const lessonSaved = await saveLessonMetadata();
+    const itemsSaved = await saveLessonItems({ silent: true });
+
+    if (lessonSaved && itemsSaved) {
+      notify('Lesson updated');
     }
   };
 
@@ -191,10 +211,15 @@ export default function LessonDetailPage() {
   };
 
   const addSegment = (itemLocalId: string) => {
-    updateItem(itemLocalId, (item) => ({
-      ...item,
-      segments: [...item.segments, createSegment()],
-    }));
+    updateItem(itemLocalId, (item) => {
+      const lastSegment = item.segments[item.segments.length - 1];
+      const startMs = Number.isFinite(lastSegment?.endMs) ? Number(lastSegment?.endMs) : 0;
+
+      return {
+        ...item,
+        segments: [...item.segments, createSegment(startMs)],
+      };
+    });
   };
 
   const removeSegment = (itemLocalId: string, segmentLocalId: string) => {
@@ -249,6 +274,7 @@ export default function LessonDetailPage() {
       notify(message, 'error');
     } finally {
       setDeletingItemLocalId((current) => (current === itemLocalId ? null : current));
+      setDeleteAudioTarget((current) => (current?.itemLocalId === itemLocalId ? null : current));
     }
   };
 
@@ -323,8 +349,8 @@ export default function LessonDetailPage() {
                     text: e.target.value,
                   }))
                 }
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                rows={3}
+                className="mt-1 min-h-48 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                rows={6}
               />
             </div>
 
@@ -340,13 +366,11 @@ export default function LessonDetailPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => {
-                      void handleAudioDelete(item.localId, item.audioUrl);
-                    }}
+                    onClick={() => setDeleteAudioTarget({ itemLocalId: item.localId, audioUrl: item.audioUrl })}
                     disabled={deletingItemLocalId === item.localId}
                     className="rounded-md border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {deletingItemLocalId === item.localId ? 'Deleting audio…' : 'Delete audio'}
+                    {deletingItemLocalId === item.localId ? 'Deleting voice…' : 'Delete voice'}
                   </button>
                 </div>
               ) : (
@@ -476,6 +500,15 @@ export default function LessonDetailPage() {
                   </div>
                 </div>
               ))}
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => addSegment(item.localId)}
+                  className="text-xs font-semibold text-brand-600"
+                >
+                  + Add phrase
+                </button>
+              </div>
             </div>
           </div>
         ))}
@@ -496,7 +529,7 @@ export default function LessonDetailPage() {
 
     return (
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-2">
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Dictionary coverage</h3>
             <p className="text-xs text-slate-500">
@@ -534,7 +567,7 @@ export default function LessonDetailPage() {
             <p className="text-xs font-semibold uppercase text-rose-600">
               Missing Armenian translations
             </p>
-            <div className="mt-2 flex max-h-40 flex-wrap gap-2 overflow-y-auto">
+            <div className="mt-3 flex min-h-24 flex-wrap gap-2">
               {missingArmenianTranslations.map((item) => (
                 <CoveragePill key={`${item.kind}:${item.normalizedText}`} item={item} />
               ))}
@@ -560,10 +593,10 @@ export default function LessonDetailPage() {
         </span>
       </div>
 
-      <div className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.82fr)_minmax(0,1.68fr)]">
         <form
           className="space-y-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm"
-          onSubmit={handleLessonSubmit}
+          onSubmit={handleSaveAll}
         >
           <div>
             <label className="block text-sm font-medium text-slate-700">Title</label>
@@ -585,17 +618,32 @@ export default function LessonDetailPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700">Status</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as LessonStatus)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            >
-              {LESSON_STATUSES.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              {LESSON_STATUSES.map((value) => {
+                const isActive = status === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setStatus(value)}
+                    className={[
+                      'flex items-center justify-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold transition',
+                      isActive
+                        ? 'border-brand-600 bg-brand-50 text-brand-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                    ].join(' ')}
+                  >
+                    <span
+                      className={[
+                        'h-2.5 w-2.5 rounded-full border',
+                        isActive ? 'border-brand-600 bg-brand-600' : 'border-slate-300 bg-transparent',
+                      ].join(' ')}
+                    />
+                    {value === 'DRAFT' ? 'Draft' : 'Published'}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           {feedback && <p className="text-sm text-slate-500">{feedback}</p>}
           <button
@@ -605,26 +653,35 @@ export default function LessonDetailPage() {
           >
             {updateLesson.isPending ? 'Saving…' : 'Save lesson'}
           </button>
+          <div className="pt-2">{renderDictionaryCoverage()}</div>
         </form>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+        <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Lesson Items</h2>
             </div>
             <div className="flex items-center gap-3">
-              <Link href="/dashboard/vocabulary" className="text-sm text-brand-600">
-                Open dictionary
-              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  void saveLessonItems();
+                }}
+                disabled={updateLesson.isPending}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {updateLesson.isPending ? 'Saving…' : 'Save items'}
+              </button>
             </div>
           </div>
-          <div className="mt-4">{renderDictionaryCoverage()}</div>
           <div className="mt-4 space-y-4">{renderItemsBody()}</div>
-          <div className="mt-4 flex items-center justify-between">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             {itemsFeedback ? <p className="text-sm text-slate-500">{itemsFeedback}</p> : <span />}
             <button
               type="button"
-              onClick={handleItemsSave}
+              onClick={() => {
+                void saveLessonItems();
+              }}
               disabled={updateLesson.isPending}
               className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             >
@@ -633,6 +690,20 @@ export default function LessonDetailPage() {
           </div>
         </section>
       </div>
+
+      {deleteAudioTarget ? (
+        <ConfirmDialog
+          title="Delete voice?"
+          description="Do you really want to delete this voice? This cannot be undone."
+          confirmLabel="Delete voice"
+          tone="danger"
+          isPending={deletingItemLocalId === deleteAudioTarget.itemLocalId}
+          onCancel={() => setDeleteAudioTarget(null)}
+          onConfirm={() => {
+            void handleAudioDelete(deleteAudioTarget.itemLocalId, deleteAudioTarget.audioUrl);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
