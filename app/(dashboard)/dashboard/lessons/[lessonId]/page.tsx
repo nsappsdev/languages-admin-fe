@@ -122,6 +122,7 @@ export default function LessonDetailPage() {
   const [uploadingItemLocalId, setUploadingItemLocalId] = useState<string | null>(null);
   const [deletingItemLocalId, setDeletingItemLocalId] = useState<string | null>(null);
   const [openTimingSegments, setOpenTimingSegments] = useState<Record<string, true>>({});
+  const [audioDurationByItemLocalId, setAudioDurationByItemLocalId] = useState<Record<string, number>>({});
   const [deleteAudioTarget, setDeleteAudioTarget] = useState<{
     itemLocalId: string;
     audioUrl: string;
@@ -133,6 +134,7 @@ export default function LessonDetailPage() {
     setDescription(lesson.description ?? '');
     setStatus(lesson.status);
     setItems(lesson.items.map(toEditableItem));
+    setAudioDurationByItemLocalId({});
   }, [lesson]);
 
   const sortedItems = useMemo(
@@ -433,7 +435,11 @@ export default function LessonDetailPage() {
     const currentItem = items.find((item) => item.localId === itemLocalId);
     if (!currentItem) return;
 
-    const initialized = buildSentenceInitializedItem(currentItem, dictionaryCoverage);
+    const initialized = buildSentenceInitializedItem(
+      currentItem,
+      dictionaryCoverage,
+      audioDurationByItemLocalId[currentItem.localId],
+    );
     if (!initialized) {
       setItemsFeedback('Add item text before initializing whole-text timings.');
       return;
@@ -587,9 +593,17 @@ export default function LessonDetailPage() {
                 <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <audio
                     controls
-                    preload="none"
+                    preload="metadata"
                     className="w-full"
                     src={`${MEDIA_BASE_URL}${item.audioUrl}`}
+                    onLoadedMetadata={(event) => {
+                      const durationSeconds = event.currentTarget.duration;
+                      if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return;
+                      setAudioDurationByItemLocalId((current) => ({
+                        ...current,
+                        [item.localId]: Math.round(durationSeconds * 1000),
+                      }));
+                    }}
                   />
                   <button
                     type="button"
@@ -1167,13 +1181,14 @@ function deriveSegmentSentenceTimings(
 function buildSentenceInitializedItem(
   item: EditableItem,
   dictionaryCoverage: LessonDictionaryCoverageItem[],
+  audioDurationMs?: number,
 ): { item: EditableItem; segmentCount: number; wordCount: number } | null {
   const sentenceParts = splitTextIntoSentences(item.text);
   if (!sentenceParts.length) {
     return null;
   }
 
-  const timingWindow = getItemTimingWindow(item, sentenceParts.length);
+  const timingWindow = getItemTimingWindow(item, sentenceParts.length, audioDurationMs);
   const segments: EditableSegment[] = [];
   let previousEndMs = timingWindow.startMs;
 
@@ -1257,7 +1272,15 @@ function splitTextIntoSentences(value: string): Array<{ text: string; start: num
 function getItemTimingWindow(
   item: EditableItem,
   sentenceCount: number,
+  audioDurationMs?: number,
 ): { startMs: number; endMs: number } {
+  if (audioDurationMs && Number.isFinite(audioDurationMs) && audioDurationMs > 0) {
+    return {
+      startMs: 0,
+      endMs: Math.round(audioDurationMs),
+    };
+  }
+
   const validSegments = item.segments.filter(
     (segment) =>
       Number.isFinite(segment.startMs) &&
@@ -1285,8 +1308,7 @@ function estimateMsFromTextOffsetInWindow(
   startMs: number,
   endMs: number,
 ) {
-  const textLength = Math.max(text.length, 1);
-  const ratio = Math.min(Math.max(offset / textLength, 0), 1);
+  const ratio = getSpeechOffsetRatio(text, offset);
   return Math.min(
     endMs,
     Math.max(startMs, startMs + Math.floor((endMs - startMs) * ratio)),
@@ -1357,12 +1379,31 @@ function buildTermPattern(term: string, kind: LessonDictionaryCoverageItem['kind
 }
 
 function estimateMsFromTextOffset(segment: EditableSegment, offset: number) {
-  const textLength = Math.max(segment.text.length, 1);
-  const ratio = Math.min(Math.max(offset / textLength, 0), 1);
+  const ratio = getSpeechOffsetRatio(segment.text, offset);
   return Math.min(
     segment.endMs,
     Math.max(segment.startMs, segment.startMs + Math.floor((segment.endMs - segment.startMs) * ratio)),
   );
+}
+
+function getSpeechOffsetRatio(text: string, offset: number) {
+  const boundedOffset = Math.min(Math.max(offset, 0), text.length);
+  const totalWeight = getSpeechWeight(text);
+  if (totalWeight <= 0) {
+    const textLength = Math.max(text.length, 1);
+    return Math.min(Math.max(boundedOffset / textLength, 0), 1);
+  }
+
+  return Math.min(Math.max(getSpeechWeight(text.slice(0, boundedOffset)) / totalWeight, 0), 1);
+}
+
+function getSpeechWeight(value: string) {
+  const matches = value.match(/[A-Za-z0-9']+/g);
+  if (!matches?.length) {
+    return value.trim().length;
+  }
+
+  return matches.reduce((sum, part) => sum + part.length, 0);
 }
 
 function escapeRegExp(value: string) {

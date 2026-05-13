@@ -543,10 +543,29 @@ function estimateMsFromTextOffsetInWindow(
   startMs: number,
   endMs: number,
 ) {
-  const textLength = Math.max(text.length, 1);
-  const ratio = Math.min(Math.max(offset / textLength, 0), 1);
+  const ratio = getSpeechOffsetRatio(text, offset);
   return Math.min(
     endMs,
     Math.max(startMs, startMs + Math.floor((endMs - startMs) * ratio)),
   );
+}
+
+function getSpeechOffsetRatio(text: string, offset: number) {
+  const boundedOffset = Math.min(Math.max(offset, 0), text.length);
+  const totalWeight = getSpeechWeight(text);
+  if (totalWeight <= 0) {
+    const textLength = Math.max(text.length, 1);
+    return Math.min(Math.max(boundedOffset / textLength, 0), 1);
+  }
+
+  return Math.min(Math.max(getSpeechWeight(text.slice(0, boundedOffset)) / totalWeight, 0), 1);
+}
+
+function getSpeechWeight(value: string) {
+  const matches = value.match(/[A-Za-z0-9']+/g);
+  if (!matches?.length) {
+    return value.trim().length;
+  }
+
+  return matches.reduce((sum, part) => sum + part.length, 0);
 }
