@@ -18,6 +18,8 @@ type UpdateLessonInput = {
       audioUrl: string;
       order?: number;
       segments: LessonItem['segments'];
+      wordTimings?: LessonItem['wordTimings'];
+      sentenceTimings?: LessonItem['sentenceTimings'];
     }>;
   };
 };
@@ -28,6 +30,8 @@ type CreateItemInput = {
   audioUrl: string;
   order?: number;
   segments: LessonItem['segments'];
+  wordTimings?: LessonItem['wordTimings'];
+  sentenceTimings?: LessonItem['sentenceTimings'];
 };
 
 type DeleteItemInput = { lessonId: string; itemId: string };

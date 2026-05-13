@@ -7,11 +7,15 @@ import { useApiClient } from './useApiClient';
 type UpdateSettingsInput = Partial<
   Pick<
     AppSettings,
-    | 'unknownWordRepetitions'
+    | 'readingModes'
     | 'mainTextFontFamily'
     | 'mainTextFontSize'
     | 'translationFontFamily'
     | 'translationFontSize'
+    | 'translationFontMinSize'
+    | 'translationFontMaxSize'
+    | 'translationLetterSpacingMin'
+    | 'translationLetterSpacingMax'
   >
 >;
 
