@@ -6,7 +6,15 @@ import { useApiClient } from '../../../../../hooks/useApiClient';
 import { LessonItem, LessonItemSegment, LessonStatus } from '../../../../../lib/apiTypes';
 
 type EditableSegment = LessonItemSegment & { localId: string };
-type EditableItem = Omit<LessonItem, 'segments'> & { localId: string; segments: EditableSegment[] };
+type EditableItem = Omit<
+  LessonItem,
+  'segments' | 'wordTimings' | 'sentenceTimings'
+> & {
+  localId: string;
+  segments: EditableSegment[];
+  wordTimings: LessonItem['wordTimings'];
+  sentenceTimings: LessonItem['sentenceTimings'];
+};
 
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
 
@@ -31,6 +39,8 @@ const createItem = (order: number): EditableItem => ({
   audioUrl: '',
   order,
   segments: [createSegment()],
+  wordTimings: [],
+  sentenceTimings: [],
 });
 
 export default function NewLessonPage() {
@@ -59,6 +69,8 @@ export default function NewLessonPage() {
         startMs: Number(segment.startMs),
         endMs: Number(segment.endMs),
       })),
+      wordTimings: item.wordTimings,
+      sentenceTimings: item.sentenceTimings,
     }));
 
   const updateItem = (localId: string, updater: (item: EditableItem) => EditableItem) => {
@@ -108,6 +120,25 @@ export default function NewLessonPage() {
     }));
   };
 
+  const initializeItemSegments = (itemLocalId: string) => {
+    const currentItem = items.find((item) => item.localId === itemLocalId);
+    if (!currentItem) return;
+
+    const segments = buildSentenceSegments(currentItem);
+    if (!segments.length) {
+      setError('Add item text before initializing whole-text timings.');
+      return;
+    }
+
+    updateItem(itemLocalId, (item) => ({
+      ...item,
+      segments,
+      wordTimings: [],
+      sentenceTimings: [],
+    }));
+    setError(null);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
@@ -151,6 +182,8 @@ export default function NewLessonPage() {
               startMs,
               endMs,
             })),
+            wordTimings: item.wordTimings,
+            sentenceTimings: item.sentenceTimings,
           })),
         }),
       });
@@ -301,13 +334,22 @@ export default function NewLessonPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-medium text-slate-500">Phrase Timings</label>
-                    <button
-                      type="button"
-                      onClick={() => addSegment(item.localId)}
-                      className="text-xs text-brand-600"
-                    >
-                      + Add phrase
-                    </button>
+                    <div className="flex flex-wrap justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => initializeItemSegments(item.localId)}
+                        className="text-xs font-semibold text-brand-600"
+                      >
+                        Initialize whole text
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => addSegment(item.localId)}
+                        className="text-xs font-semibold text-brand-600"
+                      >
+                        + Add phrase
+                      </button>
+                    </div>
                   </div>
 
                   {item.segments.map((segment) => (
@@ -392,5 +434,119 @@ export default function NewLessonPage() {
         </section>
       </div>
     </div>
+  );
+}
+
+function buildSentenceSegments(item: EditableItem): EditableSegment[] {
+  const sentenceParts = splitTextIntoSentences(item.text);
+  if (!sentenceParts.length) {
+    return [];
+  }
+
+  const timingWindow = getItemTimingWindow(item, sentenceParts.length);
+  const segments: EditableSegment[] = [];
+  let previousEndMs = timingWindow.startMs;
+
+  sentenceParts.forEach((part, index) => {
+    const startMs = index === 0 ? timingWindow.startMs : previousEndMs;
+    const estimatedEndMs =
+      index === sentenceParts.length - 1
+        ? timingWindow.endMs
+        : estimateMsFromTextOffsetInWindow(
+            item.text,
+            part.end,
+            timingWindow.startMs,
+            timingWindow.endMs,
+          );
+    const endMs = Math.min(
+      timingWindow.endMs,
+      Math.max(startMs + 100, estimatedEndMs),
+    );
+
+    segments.push({
+      id: createLocalId(),
+      localId: createLocalId(),
+      text: part.text,
+      startMs,
+      endMs,
+    });
+    previousEndMs = endMs;
+  });
+
+  return segments;
+}
+
+function splitTextIntoSentences(value: string): Array<{ text: string; start: number; end: number }> {
+  const sentences: Array<{ text: string; start: number; end: number }> = [];
+  const matcher = /[^.!?]+(?:[.!?]+|$)/g;
+
+  for (const match of value.matchAll(matcher)) {
+    const rawText = match[0] ?? '';
+    const rawStart = match.index ?? 0;
+    const leadingWhitespace = rawText.match(/^\s*/)?.[0].length ?? 0;
+    const trailingWhitespace = rawText.match(/\s*$/)?.[0].length ?? 0;
+    const start = rawStart + leadingWhitespace;
+    const end = rawStart + rawText.length - trailingWhitespace;
+    const text = value.slice(start, end).trim();
+    if (text) {
+      sentences.push({ text, start, end });
+    }
+  }
+
+  if (sentences.length) {
+    return sentences;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const start = value.indexOf(trimmed);
+  return [{ text: trimmed, start, end: start + trimmed.length }];
+}
+
+function getItemTimingWindow(
+  item: EditableItem,
+  sentenceCount: number,
+): { startMs: number; endMs: number } {
+  const validSegments = item.segments.filter(
+    (segment) =>
+      Number.isFinite(segment.startMs) &&
+      Number.isFinite(segment.endMs) &&
+      segment.endMs > segment.startMs,
+  );
+  const hasOnlyDefaultEmptySegment =
+    validSegments.length === 1 &&
+    item.segments.length === 1 &&
+    !item.segments[0]?.text.trim() &&
+    validSegments[0]?.startMs === 0 &&
+    validSegments[0]?.endMs === 1000;
+
+  if (validSegments.length && !hasOnlyDefaultEmptySegment) {
+    const startMs = Math.min(...validSegments.map((segment) => segment.startMs));
+    const endMs = Math.max(...validSegments.map((segment) => segment.endMs));
+    if (endMs > startMs) {
+      return { startMs, endMs };
+    }
+  }
+
+  return {
+    startMs: 0,
+    endMs: Math.max(1000, sentenceCount * 3000),
+  };
+}
+
+function estimateMsFromTextOffsetInWindow(
+  text: string,
+  offset: number,
+  startMs: number,
+  endMs: number,
+) {
+  const textLength = Math.max(text.length, 1);
+  const ratio = Math.min(Math.max(offset / textLength, 0), 1);
+  return Math.min(
+    endMs,
+    Math.max(startMs, startMs + Math.floor((endMs - startMs) * ratio)),
   );
 }

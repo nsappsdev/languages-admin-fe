@@ -11,6 +11,8 @@ import {
   LessonDictionaryCoverageItem,
   LessonItem,
   LessonItemSegment,
+  LessonItemSentenceTiming,
+  LessonItemWordTiming,
   LessonStatus,
 } from '../../../../../lib/apiTypes';
 import { MEDIA_BASE_URL } from '../../../../../lib/config';
@@ -22,7 +24,25 @@ import {
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
 
 type EditableSegment = LessonItemSegment & { localId: string };
-type EditableItem = Omit<LessonItem, 'segments'> & { localId: string; segments: EditableSegment[] };
+type EditableWordTiming = LessonItemWordTiming & { localId: string };
+type EditableSentenceTiming = LessonItemSentenceTiming & { localId: string };
+type TranslatedTimingCandidate = {
+  text: string;
+  normalizedText: string;
+  textStart: number;
+  textEnd: number;
+  startMs: number;
+  endMs: number;
+};
+type EditableItem = Omit<
+  LessonItem,
+  'segments' | 'wordTimings' | 'sentenceTimings'
+> & {
+  localId: string;
+  segments: EditableSegment[];
+  wordTimings: EditableWordTiming[];
+  sentenceTimings: EditableSentenceTiming[];
+};
 
 const createLocalId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -37,12 +57,51 @@ const createSegment = (startMs = 0, endMs = startMs + 1000): EditableSegment => 
   endMs,
 });
 
+const createWordTiming = (
+  text = '',
+  startMs = 0,
+  endMs = startMs + 250,
+  order = 0,
+): EditableWordTiming => ({
+  id: createLocalId(),
+  localId: createLocalId(),
+  text,
+  normalizedText: normalizeTimingText(text),
+  startMs,
+  endMs,
+  order,
+});
+
+const createSentenceTiming = (
+  text = '',
+  startMs = 0,
+  endMs = startMs + 1000,
+  order = 0,
+  wordMarkIds: string[] = [],
+): EditableSentenceTiming => ({
+  id: createLocalId(),
+  localId: createLocalId(),
+  text,
+  startMs,
+  endMs,
+  wordMarkIds,
+  order,
+});
+
 const toEditableItem = (item: LessonItem): EditableItem => ({
   ...item,
   localId: item.id,
   segments: item.segments.map((segment) => ({
     ...segment,
     localId: segment.id,
+  })),
+  wordTimings: (item.wordTimings ?? []).map((mark) => ({
+    ...mark,
+    localId: mark.id,
+  })),
+  sentenceTimings: (item.sentenceTimings ?? []).map((mark) => ({
+    ...mark,
+    localId: mark.id,
   })),
 });
 
@@ -62,6 +121,7 @@ export default function LessonDetailPage() {
   const [itemsFeedback, setItemsFeedback] = useState<string | null>(null);
   const [uploadingItemLocalId, setUploadingItemLocalId] = useState<string | null>(null);
   const [deletingItemLocalId, setDeletingItemLocalId] = useState<string | null>(null);
+  const [openTimingSegments, setOpenTimingSegments] = useState<Record<string, true>>({});
   const [deleteAudioTarget, setDeleteAudioTarget] = useState<{
     itemLocalId: string;
     audioUrl: string;
@@ -86,17 +146,34 @@ export default function LessonDetailPage() {
   const armenianTranslatedCount = dictionaryCoverage.length - missingArmenianTranslations.length;
 
   const normalizeItems = (currentItems: EditableItem[]): EditableItem[] =>
-    currentItems.map((item, index): EditableItem => ({
-      ...item,
-      order: index,
-      segments: item.segments.map((segment): EditableSegment => ({
+    currentItems.map((item, index): EditableItem => {
+      const segments = item.segments.map((segment): EditableSegment => ({
         id: segment.id,
         localId: segment.localId,
         text: segment.text,
         startMs: Number(segment.startMs),
         endMs: Number(segment.endMs),
-      })),
-    }));
+      }));
+      const wordTimings = orderWordTimings(item.wordTimings).map(
+        (mark, markIndex): EditableWordTiming => ({
+          id: mark.id,
+          localId: mark.localId,
+          text: mark.text,
+          normalizedText: normalizeTimingText(mark.normalizedText || mark.text),
+          startMs: Number(mark.startMs),
+          endMs: Number(mark.endMs),
+          order: markIndex,
+        }),
+      );
+
+      return {
+        ...item,
+        order: index,
+        segments,
+        wordTimings,
+        sentenceTimings: deriveSegmentSentenceTimings(segments, wordTimings),
+      };
+    });
 
   const saveLessonMetadata = async () => {
     if (!lessonId) return false;
@@ -129,11 +206,25 @@ export default function LessonDetailPage() {
             Number.isNaN(segment.startMs) ||
             Number.isNaN(segment.endMs) ||
             segment.endMs <= segment.startMs,
+        ) ||
+        item.wordTimings.some(
+          (mark) =>
+            mark.text.trim().length < 1 ||
+            Number.isNaN(mark.startMs) ||
+            Number.isNaN(mark.endMs) ||
+            mark.endMs <= mark.startMs,
+        ) ||
+        item.sentenceTimings.some(
+          (mark) =>
+            mark.text.trim().length < 1 ||
+            Number.isNaN(mark.startMs) ||
+            Number.isNaN(mark.endMs) ||
+            mark.endMs <= mark.startMs,
         ),
     );
 
     if (hasInvalidItems) {
-      setItemsFeedback('Each item needs text and valid phrase timings. Audio can be uploaded later.');
+      setItemsFeedback('Each item needs text and valid phrase plus word/phrase timings. Audio can be uploaded later.');
       return false;
     }
 
@@ -153,6 +244,26 @@ export default function LessonDetailPage() {
               startMs,
               endMs,
             })),
+            wordTimings: item.wordTimings.map(
+              ({ id, text, normalizedText, startMs, endMs, order }) => ({
+                id,
+                text,
+                normalizedText,
+                startMs,
+                endMs,
+                order,
+              }),
+            ),
+            sentenceTimings: item.sentenceTimings.map(
+              ({ id, text, startMs, endMs, wordMarkIds, order }) => ({
+                id,
+                text,
+                startMs,
+                endMs,
+                wordMarkIds,
+                order,
+              }),
+            ),
           })),
         },
       });
@@ -186,6 +297,25 @@ export default function LessonDetailPage() {
     setItems((prev) =>
       prev.map((item) => (item.localId === localId ? updater(item) : item)),
     );
+  };
+
+  const toggleTimingSegment = (itemLocalId: string, segmentLocalId: string) => {
+    const key = getTimingSegmentKey(itemLocalId, segmentLocalId);
+    setOpenTimingSegments((current) => {
+      if (current[key]) {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      }
+      return { ...current, [key]: true };
+    });
+  };
+
+  const openTimingSegment = (itemLocalId: string, segmentLocalId: string) => {
+    setOpenTimingSegments((current) => ({
+      ...current,
+      [getTimingSegmentKey(itemLocalId, segmentLocalId)]: true,
+    }));
   };
 
   const moveItem = (localId: string, direction: 'up' | 'down') => {
@@ -226,7 +356,104 @@ export default function LessonDetailPage() {
     updateItem(itemLocalId, (item) => ({
       ...item,
       segments: item.segments.filter((segment) => segment.localId !== segmentLocalId),
+      wordTimings: orderWordTimings(
+        item.wordTimings.filter((mark) => {
+          const segment = item.segments.find((entry) => entry.localId === segmentLocalId);
+          return segment ? !isTimingInsideSegment(mark, segment) : true;
+        }),
+      ),
+      sentenceTimings: orderSentenceTimings(
+        item.sentenceTimings.filter((mark) => {
+          const segment = item.segments.find((entry) => entry.localId === segmentLocalId);
+          return segment ? !isTimingInsideSegment(mark, segment) : true;
+        }),
+      ),
     }));
+  };
+
+  const addWordTiming = (itemLocalId: string, segment: EditableSegment) => {
+    updateItem(itemLocalId, (item) => ({
+      ...item,
+      wordTimings: orderWordTimings([
+        ...item.wordTimings,
+        createWordTiming(
+          '',
+          segment.startMs,
+          Math.min(segment.startMs + 250, segment.endMs),
+          item.wordTimings.length,
+        ),
+      ]),
+    }));
+    openTimingSegment(itemLocalId, segment.localId);
+  };
+
+  const removeWordTiming = (itemLocalId: string, wordLocalId: string) => {
+    updateItem(itemLocalId, (item) => {
+      const removed = item.wordTimings.find((mark) => mark.localId === wordLocalId);
+      return {
+        ...item,
+        wordTimings: orderWordTimings(item.wordTimings
+          .filter((mark) => mark.localId !== wordLocalId)
+          .map((mark, index) => ({ ...mark, order: index }))),
+        sentenceTimings: item.sentenceTimings.map((sentence) => ({
+          ...sentence,
+          wordMarkIds: removed
+            ? sentence.wordMarkIds.filter((wordMarkId) => wordMarkId !== removed.id)
+            : sentence.wordMarkIds,
+        })),
+      };
+    });
+  };
+
+  const initializeSegmentTimingMarks = (itemLocalId: string, segment: EditableSegment) => {
+    updateItem(itemLocalId, (item) => {
+      const translatedCandidates = getTranslatedTimingCandidates(segment, dictionaryCoverage);
+      const wordTimingPairs = translatedCandidates.map((candidate, index) => ({
+        candidate,
+        mark: {
+          ...createWordTiming(candidate.text, candidate.startMs, candidate.endMs, index),
+          normalizedText: candidate.normalizedText,
+        },
+      }));
+      const wordTimings = wordTimingPairs.map(({ mark }) => mark);
+
+      const preservedWords = item.wordTimings.filter((mark) => !isTimingInsideSegment(mark, segment));
+      const nextWordTimings = orderWordTimings([...preservedWords, ...wordTimings]);
+
+      return {
+        ...item,
+        wordTimings: nextWordTimings,
+        sentenceTimings: deriveSegmentSentenceTimings(item.segments, nextWordTimings),
+      };
+    });
+    openTimingSegment(itemLocalId, segment.localId);
+  };
+
+  const initializeItemTimingMarks = (itemLocalId: string) => {
+    const currentItem = items.find((item) => item.localId === itemLocalId);
+    if (!currentItem) return;
+
+    const initialized = buildSentenceInitializedItem(currentItem, dictionaryCoverage);
+    if (!initialized) {
+      setItemsFeedback('Add item text before initializing whole-text timings.');
+      return;
+    }
+
+    setItems((prev) =>
+      prev.map((item) => (item.localId === itemLocalId ? initialized.item : item)),
+    );
+    setOpenTimingSegments((current) => {
+      const next = { ...current };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(`${itemLocalId}:`)) {
+          delete next[key];
+        }
+      }
+      return next;
+    });
+    setItemsFeedback(
+      `Initialized ${initialized.segmentCount} sentence segments and ${initialized.wordCount} word/phrase timings.`,
+    );
   };
 
   const handleAudioUpload = async (itemLocalId: string, file: File) => {
@@ -416,90 +643,239 @@ export default function LessonDetailPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-medium text-slate-500">Phrase Timings</label>
-                <button
-                  type="button"
-                  onClick={() => addSegment(item.localId)}
-                  className="text-xs text-brand-600"
-                >
-                  + Add phrase
-                </button>
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => initializeItemTimingMarks(item.localId)}
+                    className="text-xs font-semibold text-brand-600"
+                  >
+                    Initialize whole text
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addSegment(item.localId)}
+                    className="text-xs font-semibold text-brand-600"
+                  >
+                    + Add phrase
+                  </button>
+                </div>
               </div>
 
-              {item.segments.map((segment) => (
-                <div
-                  key={segment.localId}
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <p className="text-xs font-medium text-slate-500">Segment</p>
-                    {item.segments.length > 1 && (
+              {item.segments.map((segment) => {
+                const segmentWordTimings = item.wordTimings.filter((mark) =>
+                  isTimingInsideSegment(mark, segment),
+                );
+                const isTimingOpen = Boolean(
+                  openTimingSegments[getTimingSegmentKey(item.localId, segment.localId)],
+                );
+
+                return (
+                  <div
+                    key={segment.localId}
+                    className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <p className="text-xs font-medium text-slate-500">Segment</p>
+                      {item.segments.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeSegment(item.localId, segment.localId)}
+                          className="text-xs text-rose-600"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      value={segment.text}
+                      onChange={(e) =>
+                        updateItem(item.localId, (current) => ({
+                          ...current,
+                          segments: current.segments.map((entry) =>
+                            entry.localId === segment.localId
+                              ? { ...entry, text: e.target.value }
+                              : entry,
+                          ),
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      rows={2}
+                      placeholder="Phrase text"
+                    />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500">Start (ms)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={segment.startMs}
+                          onChange={(e) =>
+                            updateItem(item.localId, (current) => ({
+                              ...current,
+                              segments: current.segments.map((entry) =>
+                                entry.localId === segment.localId
+                                  ? { ...entry, startMs: Number(e.target.value) }
+                                  : entry,
+                              ),
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500">End (ms)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={segment.endMs}
+                          onChange={(e) =>
+                            updateItem(item.localId, (current) => ({
+                              ...current,
+                              segments: current.segments.map((entry) =>
+                                entry.localId === segment.localId
+                                  ? { ...entry, endMs: Number(e.target.value) }
+                                  : entry,
+                              ),
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
                       <button
                         type="button"
-                        onClick={() => removeSegment(item.localId, segment.localId)}
-                        className="text-xs text-rose-600"
+                        onClick={() => toggleTimingSegment(item.localId, segment.localId)}
+                        className="flex w-full items-center justify-between gap-3 text-left text-xs font-semibold uppercase text-slate-600"
                       >
-                        Remove
+                        <span>
+                          {isTimingOpen ? 'Hide' : 'Show'} segment timings
+                          <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                            {segmentWordTimings.length} words/phrases
+                          </span>
+                        </span>
+                        <span className="text-base leading-none text-slate-400">
+                          {isTimingOpen ? '⌃' : '⌄'}
+                        </span>
                       </button>
-                    )}
-                  </div>
-                  <textarea
-                    value={segment.text}
-                    onChange={(e) =>
-                      updateItem(item.localId, (current) => ({
-                        ...current,
-                        segments: current.segments.map((entry) =>
-                          entry.localId === segment.localId
-                            ? { ...entry, text: e.target.value }
-                            : entry,
-                        ),
-                      }))
-                    }
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    rows={2}
-                    placeholder="Phrase text"
-                  />
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500">Start (ms)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={segment.startMs}
-                        onChange={(e) =>
-                          updateItem(item.localId, (current) => ({
-                            ...current,
-                            segments: current.segments.map((entry) =>
-                              entry.localId === segment.localId
-                                ? { ...entry, startMs: Number(e.target.value) }
-                                : entry,
-                            ),
-                          }))
-                        }
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      />
+                      {isTimingOpen ? (
+                        <div className="flex flex-wrap justify-end gap-3">
+                          <button
+                            type="button"
+                            onClick={() => initializeSegmentTimingMarks(item.localId, segment)}
+                            className="text-xs font-semibold text-brand-600"
+                          >
+                            Initialize this segment
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => addWordTiming(item.localId, segment)}
+                            className="text-xs font-semibold text-brand-600"
+                          >
+                            + Add word/phrase
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void saveLessonItems();
+                            }}
+                            disabled={updateLesson.isPending}
+                            className="text-xs font-semibold text-slate-700 disabled:opacity-50"
+                          >
+                            {updateLesson.isPending ? 'Saving…' : 'Save segment timings'}
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {isTimingOpen ? (
+                        <>
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-slate-500">Words / phrases</p>
+                        {segmentWordTimings.length ? (
+                          segmentWordTimings.map((mark) => (
+                            <div
+                              key={mark.localId}
+                              className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(180px,1fr)_110px_110px_auto]"
+                            >
+                              <input
+                                value={mark.text}
+                                onChange={(event) =>
+                                  updateItem(item.localId, (current) => ({
+                                    ...current,
+                                    wordTimings: orderWordTimings(
+                                      current.wordTimings.map((entry) =>
+                                        entry.localId === mark.localId
+                                          ? {
+                                              ...entry,
+                                              text: event.target.value,
+                                              normalizedText: normalizeTimingText(event.target.value),
+                                            }
+                                          : entry,
+                                      ),
+                                    ),
+                                  }))
+                                }
+                                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                placeholder="Word / phrase"
+                              />
+                              <input
+                                type="number"
+                                min={segment.startMs}
+                                value={mark.startMs}
+                                onChange={(event) =>
+                                  updateItem(item.localId, (current) => ({
+                                    ...current,
+                                    wordTimings: orderWordTimings(
+                                      current.wordTimings.map((entry) =>
+                                        entry.localId === mark.localId
+                                          ? { ...entry, startMs: Number(event.target.value) }
+                                          : entry,
+                                      ),
+                                    ),
+                                  }))
+                                }
+                                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                aria-label="Word start ms"
+                              />
+                              <input
+                                type="number"
+                                min={segment.startMs + 1}
+                                value={mark.endMs}
+                                onChange={(event) =>
+                                  updateItem(item.localId, (current) => ({
+                                    ...current,
+                                    wordTimings: orderWordTimings(
+                                      current.wordTimings.map((entry) =>
+                                        entry.localId === mark.localId
+                                          ? { ...entry, endMs: Number(event.target.value) }
+                                          : entry,
+                                      ),
+                                    ),
+                                  }))
+                                }
+                                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                aria-label="Word end ms"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeWordTiming(item.localId, mark.localId)}
+                                className="text-xs text-rose-600"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-slate-500">No word ranges in this segment.</p>
+                        )}
+                      </div>
+                        </>
+                      ) : null}
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500">End (ms)</label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={segment.endMs}
-                        onChange={(e) =>
-                          updateItem(item.localId, (current) => ({
-                            ...current,
-                            segments: current.segments.map((entry) =>
-                              entry.localId === segment.localId
-                                ? { ...entry, endMs: Number(e.target.value) }
-                                : entry,
-                            ),
-                          }))
-                        }
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      />
-                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div className="flex justify-end pt-1">
                 <button
                   type="button"
@@ -730,4 +1106,265 @@ function CoveragePill({ item }: { item: LessonDictionaryCoverageItem }) {
       {content}
     </Link>
   );
+}
+
+function normalizeTimingText(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/(^'+|'+$)/g, '')
+    .replace(/'s$/g, '');
+}
+
+function isTimingInsideSegment(
+  mark: { startMs: number; endMs: number },
+  segment: { startMs: number; endMs: number },
+) {
+  return mark.startMs >= segment.startMs && mark.startMs < segment.endMs;
+}
+
+function getTimingSegmentKey(itemLocalId: string, segmentLocalId: string) {
+  return `${itemLocalId}:${segmentLocalId}`;
+}
+
+function orderWordTimings<T extends EditableWordTiming>(timings: T[]): T[] {
+  return [...timings]
+    .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs)
+    .map((timing, index) => ({ ...timing, order: index }));
+}
+
+function orderSentenceTimings<T extends EditableSentenceTiming>(timings: T[]): T[] {
+  return [...timings]
+    .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs)
+    .map((timing, index) => ({ ...timing, order: index }));
+}
+
+function deriveSegmentSentenceTimings(
+  segments: EditableSegment[],
+  wordTimings: EditableWordTiming[],
+): EditableSentenceTiming[] {
+  return orderSentenceTimings(
+    segments.flatMap((segment) => {
+      const linkedWords = wordTimings.filter((mark) => isTimingInsideSegment(mark, segment));
+      if (!linkedWords.length) {
+        return [];
+      }
+
+      return [
+        createSentenceTiming(
+          segment.text,
+          segment.startMs,
+          segment.endMs,
+          0,
+          linkedWords.map((word) => word.id),
+        ),
+      ];
+    }),
+  );
+}
+
+function buildSentenceInitializedItem(
+  item: EditableItem,
+  dictionaryCoverage: LessonDictionaryCoverageItem[],
+): { item: EditableItem; segmentCount: number; wordCount: number } | null {
+  const sentenceParts = splitTextIntoSentences(item.text);
+  if (!sentenceParts.length) {
+    return null;
+  }
+
+  const timingWindow = getItemTimingWindow(item, sentenceParts.length);
+  const segments: EditableSegment[] = [];
+  let previousEndMs = timingWindow.startMs;
+
+  sentenceParts.forEach((part, index) => {
+    const startMs =
+      index === 0
+        ? timingWindow.startMs
+        : previousEndMs;
+    const estimatedEndMs =
+      index === sentenceParts.length - 1
+        ? timingWindow.endMs
+        : estimateMsFromTextOffsetInWindow(
+            item.text,
+            part.end,
+            timingWindow.startMs,
+            timingWindow.endMs,
+          );
+    const endMs = Math.min(
+      timingWindow.endMs,
+      Math.max(startMs + 100, estimatedEndMs),
+    );
+
+    segments.push({
+      id: createLocalId(),
+      localId: createLocalId(),
+      text: part.text,
+      startMs,
+      endMs,
+    });
+    previousEndMs = endMs;
+  });
+
+  const wordTimings = orderWordTimings(
+    segments.flatMap((segment) =>
+      getTranslatedTimingCandidates(segment, dictionaryCoverage).map((candidate, index) => ({
+        ...createWordTiming(candidate.text, candidate.startMs, candidate.endMs, index),
+        normalizedText: candidate.normalizedText,
+      })),
+    ),
+  );
+
+  const nextItem: EditableItem = {
+    ...item,
+    segments,
+    wordTimings,
+    sentenceTimings: deriveSegmentSentenceTimings(segments, wordTimings),
+  };
+
+  return {
+    item: nextItem,
+    segmentCount: segments.length,
+    wordCount: wordTimings.length,
+  };
+}
+
+function splitTextIntoSentences(value: string): Array<{ text: string; start: number; end: number }> {
+  const sentences: Array<{ text: string; start: number; end: number }> = [];
+  const matcher = /[^.!?]+(?:[.!?]+|$)/g;
+
+  for (const match of value.matchAll(matcher)) {
+    const rawText = match[0] ?? '';
+    const rawStart = match.index ?? 0;
+    const leadingWhitespace = rawText.match(/^\s*/)?.[0].length ?? 0;
+    const trailingWhitespace = rawText.match(/\s*$/)?.[0].length ?? 0;
+    const start = rawStart + leadingWhitespace;
+    const end = rawStart + rawText.length - trailingWhitespace;
+    const text = value.slice(start, end).trim();
+    if (text) {
+      sentences.push({ text, start, end });
+    }
+  }
+
+  if (sentences.length) {
+    return sentences;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? [{ text: trimmed, start: value.indexOf(trimmed), end: value.indexOf(trimmed) + trimmed.length }] : [];
+}
+
+function getItemTimingWindow(
+  item: EditableItem,
+  sentenceCount: number,
+): { startMs: number; endMs: number } {
+  const validSegments = item.segments.filter(
+    (segment) =>
+      Number.isFinite(segment.startMs) &&
+      Number.isFinite(segment.endMs) &&
+      segment.endMs > segment.startMs,
+  );
+
+  if (validSegments.length) {
+    const startMs = Math.min(...validSegments.map((segment) => segment.startMs));
+    const endMs = Math.max(...validSegments.map((segment) => segment.endMs));
+    if (endMs > startMs) {
+      return { startMs, endMs };
+    }
+  }
+
+  return {
+    startMs: 0,
+    endMs: Math.max(1000, sentenceCount * 3000),
+  };
+}
+
+function estimateMsFromTextOffsetInWindow(
+  text: string,
+  offset: number,
+  startMs: number,
+  endMs: number,
+) {
+  const textLength = Math.max(text.length, 1);
+  const ratio = Math.min(Math.max(offset / textLength, 0), 1);
+  return Math.min(
+    endMs,
+    Math.max(startMs, startMs + Math.floor((endMs - startMs) * ratio)),
+  );
+}
+
+function getTranslatedTimingCandidates(
+  segment: EditableSegment,
+  dictionaryCoverage: LessonDictionaryCoverageItem[],
+): TranslatedTimingCandidate[] {
+  const translatedTerms = dictionaryCoverage
+    .filter((item) => item.hasArmenianTranslation || item.hasTranslation)
+    .filter((item) => item.kind === 'WORD' || item.kind === 'PHRASE')
+    .flatMap((item) => {
+      const labels = Array.from(new Set([item.text, item.normalizedText].filter(Boolean)));
+      return labels.map((label) => ({
+        kind: item.kind,
+        normalizedText: item.normalizedText,
+        text: label,
+      }));
+    })
+    .sort((left, right) => right.text.length - left.text.length);
+
+  const candidates: TranslatedTimingCandidate[] = [];
+  const occupiedSpans: Array<{ start: number; end: number }> = [];
+
+  for (const term of translatedTerms) {
+    const pattern = buildTermPattern(term.text, term.kind);
+    if (!pattern) continue;
+
+    const matcher = new RegExp(`(^|[^A-Za-z'])(${pattern})(?=$|[^A-Za-z'])`, 'gi');
+    for (const match of segment.text.matchAll(matcher)) {
+      const prefix = match[1] ?? '';
+      const matchedText = match[2] ?? '';
+      if (!matchedText) continue;
+
+      const textStart = (match.index ?? 0) + prefix.length;
+      const textEnd = textStart + matchedText.length;
+      if (occupiedSpans.some((span) => textStart < span.end && textEnd > span.start)) {
+        continue;
+      }
+      occupiedSpans.push({ start: textStart, end: textEnd });
+
+      const startMs = estimateMsFromTextOffset(segment, textStart);
+      const endMs = Math.max(
+        startMs + 100,
+        estimateMsFromTextOffset(segment, textEnd),
+      );
+
+      candidates.push({
+        text: matchedText,
+        normalizedText: term.normalizedText,
+        textStart,
+        textEnd,
+        startMs,
+        endMs: Math.min(endMs, segment.endMs),
+      });
+    }
+  }
+
+  return candidates.sort((left, right) => left.textStart - right.textStart || left.textEnd - right.textEnd);
+}
+
+function buildTermPattern(term: string, kind: LessonDictionaryCoverageItem['kind']) {
+  const trimmed = term.trim();
+  if (!trimmed || kind === 'SENTENCE') return null;
+  return escapeRegExp(trimmed).replace(/\s+/g, '\\s+');
+}
+
+function estimateMsFromTextOffset(segment: EditableSegment, offset: number) {
+  const textLength = Math.max(segment.text.length, 1);
+  const ratio = Math.min(Math.max(offset / textLength, 0), 1);
+  return Math.min(
+    segment.endMs,
+    Math.max(segment.startMs, segment.startMs + Math.floor((segment.endMs - segment.startMs) * ratio)),
+  );
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

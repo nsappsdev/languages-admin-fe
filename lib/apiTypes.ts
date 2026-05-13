@@ -7,6 +7,24 @@ export interface LessonItemSegment {
   endMs: number;
 }
 
+export interface LessonItemWordTiming {
+  id: string;
+  text: string;
+  normalizedText: string;
+  startMs: number;
+  endMs: number;
+  order: number;
+}
+
+export interface LessonItemSentenceTiming {
+  id: string;
+  text: string;
+  startMs: number;
+  endMs: number;
+  wordMarkIds: string[];
+  order: number;
+}
+
 export interface LessonItem {
   id: string;
   lessonId: string;
@@ -14,6 +32,8 @@ export interface LessonItem {
   audioUrl: string;
   order: number;
   segments: LessonItemSegment[];
+  wordTimings: LessonItemWordTiming[];
+  sentenceTimings: LessonItemSentenceTiming[];
 }
 
 export interface UploadedAudioFile {
@@ -89,8 +109,19 @@ export interface LearnerProgressSummaryResponse {
   lessonSummaries: LearnerLessonProgressSummary[];
 }
 
-export const REPETITION_OPTIONS = [1, 2, 3, 5, 10] as const;
+export const REPETITION_OPTIONS = [3, 5, 20] as const;
 export type RepetitionOption = (typeof REPETITION_OPTIONS)[number];
+export type ReadingModeId = 'introduction' | 'teaching' | 'deep_learning';
+
+export interface ReadingModeSettings {
+  id: ReadingModeId;
+  enabled: boolean;
+  displayName: string;
+  order: number;
+  unknownWordRepetitions?: number;
+  repeatSentenceWhenUnknownCountAtLeast?: number;
+  sentenceRepetitions?: number;
+}
 
 export const MAIN_FONT_OPTIONS = [
   'System',
@@ -107,6 +138,8 @@ export const TRANSLATION_FONT_OPTIONS = [
   'Noto Sans Armenian',
   'Noto Serif Armenian',
   'Mshtakan',
+  'Arian AMU',
+  'Arial AMU',
   'Arial',
   'Georgia',
 ] as const;
@@ -114,11 +147,15 @@ export type TranslationFontOption = (typeof TRANSLATION_FONT_OPTIONS)[number];
 
 export interface AppSettings {
   id: string;
-  unknownWordRepetitions: RepetitionOption;
+  readingModes: ReadingModeSettings[];
   mainTextFontFamily: MainFontOption;
   mainTextFontSize: number;
   translationFontFamily: TranslationFontOption;
   translationFontSize: number;
+  translationFontMinSize: number;
+  translationFontMaxSize: number;
+  translationLetterSpacingMin: number;
+  translationLetterSpacingMax: number;
   createdAt: string;
   updatedAt: string;
 }
