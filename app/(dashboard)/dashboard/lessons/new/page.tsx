@@ -18,6 +18,15 @@ type EditableItem = Omit<
 
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
 
+const smallSecondaryButtonClass =
+  'inline-flex items-center justify-center rounded-md border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50';
+
+const smallNeutralButtonClass =
+  'inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
+
+const smallDangerButtonClass =
+  'inline-flex items-center justify-center rounded-md border border-rose-200 bg-white px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50';
+
 const createLocalId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
@@ -275,7 +284,7 @@ export default function NewLessonPage() {
             <button
               type="button"
               onClick={addItem}
-              className="rounded-lg border border-brand-200 px-3 py-2 text-xs font-semibold text-brand-600"
+              className="inline-flex items-center justify-center rounded-lg border border-brand-200 bg-white px-3 py-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
             >
               + Add item
             </button>
@@ -293,7 +302,7 @@ export default function NewLessonPage() {
                     <button
                       type="button"
                       onClick={() => moveItem(item.localId, 'up')}
-                      className="text-xs text-slate-500"
+                      className={smallNeutralButtonClass}
                       disabled={index === 0}
                     >
                       ↑
@@ -301,7 +310,7 @@ export default function NewLessonPage() {
                     <button
                       type="button"
                       onClick={() => moveItem(item.localId, 'down')}
-                      className="text-xs text-slate-500"
+                      className={smallNeutralButtonClass}
                       disabled={index === sortedItems.length - 1}
                     >
                       ↓
@@ -309,7 +318,7 @@ export default function NewLessonPage() {
                     <button
                       type="button"
                       onClick={() => removeItem(item.localId)}
-                      className="text-xs text-rose-600"
+                      className={smallDangerButtonClass}
                     >
                       Remove
                     </button>
@@ -338,14 +347,14 @@ export default function NewLessonPage() {
                       <button
                         type="button"
                         onClick={() => initializeItemSegments(item.localId)}
-                        className="text-xs font-semibold text-brand-600"
+                        className={smallSecondaryButtonClass}
                       >
                         Initialize whole text
                       </button>
                       <button
                         type="button"
                         onClick={() => addSegment(item.localId)}
-                        className="text-xs font-semibold text-brand-600"
+                        className={smallSecondaryButtonClass}
                       >
                         + Add phrase
                       </button>
@@ -363,7 +372,7 @@ export default function NewLessonPage() {
                           <button
                             type="button"
                             onClick={() => removeSegment(item.localId, segment.localId)}
-                            className="text-xs text-rose-600"
+                            className={smallDangerButtonClass}
                           >
                             Remove
                           </button>

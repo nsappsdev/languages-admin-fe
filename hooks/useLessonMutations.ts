@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  GeneratedLessonTimings,
   LessonItem,
   LessonStatus,
   LessonSummary,
@@ -38,6 +39,7 @@ type DeleteItemInput = { lessonId: string; itemId: string };
 type DeleteLessonInput = { lessonId: string };
 type UploadLessonAudioInput = { file: File; lessonItemId?: string };
 type DeleteLessonAudioInput = { lessonItemId?: string; audioUrl: string };
+type GenerateLessonItemTimingsInput = { lessonId: string; itemId: string; text: string };
 
 export const useLessonMutations = () => {
   const { request } = useApiClient();
@@ -110,6 +112,17 @@ export const useLessonMutations = () => {
       }),
   });
 
+  const generateLessonItemTimings = useMutation({
+    mutationFn: ({ lessonId, itemId, text }: GenerateLessonItemTimingsInput) =>
+      request<{ timings: GeneratedLessonTimings }>(
+        `/lessons/${lessonId}/items/${itemId}/transcribe-timings`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ text }),
+        },
+      ),
+  });
+
   return {
     updateLesson,
     createItem,
@@ -117,5 +130,6 @@ export const useLessonMutations = () => {
     deleteLesson,
     uploadLessonAudio,
     deleteLessonAudio,
+    generateLessonItemTimings,
   };
 };

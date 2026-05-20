@@ -61,7 +61,7 @@ export default function SettingsPage() {
         mainTextFontFamily: form.mainTextFontFamily,
         mainTextFontSize: form.mainTextFontSize,
         translationFontFamily: form.translationFontFamily,
-        translationFontSize: form.translationFontSize,
+        translationFontSize: form.translationFontMaxSize ?? form.translationFontSize,
         translationFontMinSize: form.translationFontMinSize,
         translationFontMaxSize: form.translationFontMaxSize,
         translationLetterSpacingMin: form.translationLetterSpacingMin,

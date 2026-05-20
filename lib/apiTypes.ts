@@ -36,6 +36,14 @@ export interface LessonItem {
   sentenceTimings: LessonItemSentenceTiming[];
 }
 
+export interface GeneratedLessonTimings {
+  segments: LessonItemSegment[];
+  wordTimings: LessonItemWordTiming[];
+  sentenceTimings: LessonItemSentenceTiming[];
+  warnings: string[];
+  transcriptText: string;
+}
+
 export interface UploadedAudioFile {
   audioUrl: string;
   fileName: string;

@@ -7,6 +7,12 @@ import { useLessonMutations } from '../../../../hooks/useLessonMutations';
 import { useToast } from '../../../../components/providers/ToastProvider';
 import { ConfirmDialog } from '../../../../components/ui/ConfirmDialog';
 
+const smallSecondaryButtonClass =
+  'inline-flex items-center justify-center rounded-md border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50';
+
+const smallDangerButtonClass =
+  'inline-flex items-center justify-center rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50';
+
 export default function LessonsPage() {
   const { data, isLoading, error } = useLessons();
   const { deleteLesson } = useLessonMutations();
@@ -67,12 +73,15 @@ export default function LessonsPage() {
                     {lesson.items.length} items • {lesson.status}
                   </p>
                 </Link>
-                <div className="flex items-center gap-3">
-                  <Link href={`/dashboard/lessons/${lesson.id}`} className="text-sm text-brand-600">
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/dashboard/lessons/${lesson.id}`}
+                    className={smallSecondaryButtonClass}
+                  >
                     View
                   </Link>
                   <button
-                    className="text-sm text-rose-600 disabled:opacity-50"
+                    className={smallDangerButtonClass}
                     onClick={() => setConfirmDeleteId(lesson.id)}
                     disabled={pendingId === lesson.id}
                   >

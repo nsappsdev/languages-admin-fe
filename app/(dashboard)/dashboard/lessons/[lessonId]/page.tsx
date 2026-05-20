@@ -8,6 +8,7 @@ import { useLessonMutations } from '../../../../../hooks/useLessonMutations';
 import { useToast } from '../../../../../components/providers/ToastProvider';
 import { ConfirmDialog } from '../../../../../components/ui/ConfirmDialog';
 import {
+  GeneratedLessonTimings,
   LessonDictionaryCoverageItem,
   LessonItem,
   LessonItemSegment,
@@ -22,6 +23,18 @@ import {
 } from '../../../../../lib/lessonMissingTranslationsCsv';
 
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
+
+const smallSecondaryButtonClass =
+  'inline-flex items-center justify-center rounded-md border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50';
+
+const smallNeutralButtonClass =
+  'inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
+
+const smallDangerButtonClass =
+  'inline-flex items-center justify-center rounded-md border border-rose-200 bg-white px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50';
+
+const secondaryButtonClass =
+  'inline-flex items-center justify-center rounded-lg border border-brand-200 bg-white px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50';
 
 type EditableSegment = LessonItemSegment & { localId: string };
 type EditableWordTiming = LessonItemWordTiming & { localId: string };
@@ -55,6 +68,21 @@ const createSegment = (startMs = 0, endMs = startMs + 1000): EditableSegment => 
   text: '',
   startMs,
   endMs,
+});
+
+const toEditableSegment = (segment: LessonItemSegment): EditableSegment => ({
+  ...segment,
+  localId: segment.id,
+});
+
+const toEditableWordTiming = (mark: LessonItemWordTiming): EditableWordTiming => ({
+  ...mark,
+  localId: mark.id,
+});
+
+const toEditableSentenceTiming = (mark: LessonItemSentenceTiming): EditableSentenceTiming => ({
+  ...mark,
+  localId: mark.id,
 });
 
 const createWordTiming = (
@@ -91,18 +119,9 @@ const createSentenceTiming = (
 const toEditableItem = (item: LessonItem): EditableItem => ({
   ...item,
   localId: item.id,
-  segments: item.segments.map((segment) => ({
-    ...segment,
-    localId: segment.id,
-  })),
-  wordTimings: (item.wordTimings ?? []).map((mark) => ({
-    ...mark,
-    localId: mark.id,
-  })),
-  sentenceTimings: (item.sentenceTimings ?? []).map((mark) => ({
-    ...mark,
-    localId: mark.id,
-  })),
+  segments: item.segments.map(toEditableSegment),
+  wordTimings: (item.wordTimings ?? []).map(toEditableWordTiming),
+  sentenceTimings: (item.sentenceTimings ?? []).map(toEditableSentenceTiming),
 });
 
 export default function LessonDetailPage() {
@@ -110,7 +129,8 @@ export default function LessonDetailPage() {
   const lessonId = params?.lessonId ?? '';
   const { data, isLoading, error } = useLesson(lessonId);
   const lesson = data?.lesson;
-  const { updateLesson, uploadLessonAudio, deleteLessonAudio } = useLessonMutations();
+  const { updateLesson, uploadLessonAudio, deleteLessonAudio, generateLessonItemTimings } =
+    useLessonMutations();
   const { notify } = useToast();
 
   const [title, setTitle] = useState('');
@@ -121,6 +141,8 @@ export default function LessonDetailPage() {
   const [itemsFeedback, setItemsFeedback] = useState<string | null>(null);
   const [uploadingItemLocalId, setUploadingItemLocalId] = useState<string | null>(null);
   const [deletingItemLocalId, setDeletingItemLocalId] = useState<string | null>(null);
+  const [generatingTimingsItemLocalId, setGeneratingTimingsItemLocalId] = useState<string | null>(null);
+  const [timingWarningsByItemId, setTimingWarningsByItemId] = useState<Record<string, string[]>>({});
   const [openTimingSegments, setOpenTimingSegments] = useState<Record<string, true>>({});
   const [audioDurationByItemLocalId, setAudioDurationByItemLocalId] = useState<Record<string, number>>({});
   const [deleteAudioTarget, setDeleteAudioTarget] = useState<{
@@ -511,6 +533,53 @@ export default function LessonDetailPage() {
     }
   };
 
+  const applyGeneratedTimings = (itemLocalId: string, timings: GeneratedLessonTimings) => {
+    updateItem(itemLocalId, (current) => ({
+      ...current,
+      segments: timings.segments.map(toEditableSegment),
+      wordTimings: timings.wordTimings.map(toEditableWordTiming),
+      sentenceTimings: timings.sentenceTimings.map(toEditableSentenceTiming),
+    }));
+    setOpenTimingSegments((current) => {
+      const next = { ...current };
+      for (const segment of timings.segments) {
+        next[getTimingSegmentKey(itemLocalId, segment.id)] = true;
+      }
+      return next;
+    });
+  };
+
+  const handleGenerateTimings = async (item: EditableItem) => {
+    if (!lessonId || !item.id) return;
+    setGeneratingTimingsItemLocalId(item.localId);
+    setItemsFeedback(null);
+    setTimingWarningsByItemId((prev) => ({ ...prev, [item.localId]: [] }));
+
+    try {
+      const response = await generateLessonItemTimings.mutateAsync({
+        lessonId,
+        itemId: item.id,
+        text: item.text,
+      });
+      applyGeneratedTimings(item.localId, response.timings);
+      setTimingWarningsByItemId((prev) => ({
+        ...prev,
+        [item.localId]: response.timings.warnings,
+      }));
+      const warningSuffix = response.timings.warnings.length
+        ? ` with ${response.timings.warnings.length} warning(s)`
+        : '';
+      setItemsFeedback(`AI timings generated${warningSuffix}. Review and save items.`);
+      notify(`AI timings generated${warningSuffix}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate AI timings';
+      setItemsFeedback(message);
+      notify(message, 'error');
+    } finally {
+      setGeneratingTimingsItemLocalId((current) => (current === item.localId ? null : current));
+    }
+  };
+
   const downloadMissingTranslationsCsv = () => {
     if (!lesson || !missingArmenianTranslations.length) return;
 
@@ -549,7 +618,7 @@ export default function LessonDetailPage() {
                 <button
                   type="button"
                   onClick={() => moveItem(item.localId, 'up')}
-                  className="text-xs text-slate-500"
+                  className={smallNeutralButtonClass}
                   disabled={index === 0}
                 >
                   ↑
@@ -557,7 +626,7 @@ export default function LessonDetailPage() {
                 <button
                   type="button"
                   onClick={() => moveItem(item.localId, 'down')}
-                  className="text-xs text-slate-500"
+                  className={smallNeutralButtonClass}
                   disabled={index === sortedItems.length - 1}
                 >
                   ↓
@@ -565,7 +634,7 @@ export default function LessonDetailPage() {
                 <button
                   type="button"
                   onClick={() => removeItem(item.localId)}
-                  className="text-xs text-rose-600"
+                  className={smallDangerButtonClass}
                 >
                   Remove
                 </button>
@@ -607,9 +676,11 @@ export default function LessonDetailPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => setDeleteAudioTarget({ itemLocalId: item.localId, audioUrl: item.audioUrl })}
+                    onClick={() =>
+                      setDeleteAudioTarget({ itemLocalId: item.localId, audioUrl: item.audioUrl })
+                    }
                     disabled={deletingItemLocalId === item.localId}
-                    className="rounded-md border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className={smallDangerButtonClass}
                   >
                     {deletingItemLocalId === item.localId ? 'Deleting voice…' : 'Delete voice'}
                   </button>
@@ -654,6 +725,46 @@ export default function LessonDetailPage() {
               )}
             </div>
 
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-700">AI timings</p>
+                  <p className="text-xs text-slate-500">
+                    Generate word and sentence millisecond ranges from this item&apos;s uploaded audio.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleGenerateTimings(item);
+                  }}
+                  disabled={
+                    !item.audioUrl ||
+                    item.text.trim().length < 1 ||
+                    generatingTimingsItemLocalId === item.localId
+                  }
+                  className="rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {generatingTimingsItemLocalId === item.localId
+                    ? 'Generating…'
+                    : 'Generate AI timings'}
+                </button>
+              </div>
+              {!item.audioUrl ? (
+                <p className="mt-2 text-xs text-slate-500">Upload audio before generating timings.</p>
+              ) : null}
+              {timingWarningsByItemId[item.localId]?.length ? (
+                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2">
+                  <p className="text-xs font-semibold text-amber-800">Timing warnings</p>
+                  <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto text-xs text-amber-800">
+                    {timingWarningsByItemId[item.localId].slice(0, 12).map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-medium text-slate-500">Phrase Timings</label>
@@ -661,14 +772,14 @@ export default function LessonDetailPage() {
                   <button
                     type="button"
                     onClick={() => initializeItemTimingMarks(item.localId)}
-                    className="text-xs font-semibold text-brand-600"
+                    className={smallSecondaryButtonClass}
                   >
                     Initialize whole text
                   </button>
                   <button
                     type="button"
                     onClick={() => addSegment(item.localId)}
-                    className="text-xs font-semibold text-brand-600"
+                    className={smallSecondaryButtonClass}
                   >
                     + Add phrase
                   </button>
@@ -694,7 +805,7 @@ export default function LessonDetailPage() {
                         <button
                           type="button"
                           onClick={() => removeSegment(item.localId, segment.localId)}
-                          className="text-xs text-rose-600"
+                          className={smallDangerButtonClass}
                         >
                           Remove
                         </button>
@@ -778,14 +889,14 @@ export default function LessonDetailPage() {
                           <button
                             type="button"
                             onClick={() => initializeSegmentTimingMarks(item.localId, segment)}
-                            className="text-xs font-semibold text-brand-600"
+                            className={smallSecondaryButtonClass}
                           >
                             Initialize this segment
                           </button>
                           <button
                             type="button"
                             onClick={() => addWordTiming(item.localId, segment)}
-                            className="text-xs font-semibold text-brand-600"
+                            className={smallSecondaryButtonClass}
                           >
                             + Add word/phrase
                           </button>
@@ -795,7 +906,7 @@ export default function LessonDetailPage() {
                               void saveLessonItems();
                             }}
                             disabled={updateLesson.isPending}
-                            className="text-xs font-semibold text-slate-700 disabled:opacity-50"
+                            className={smallNeutralButtonClass}
                           >
                             {updateLesson.isPending ? 'Saving…' : 'Save segment timings'}
                           </button>
@@ -874,7 +985,7 @@ export default function LessonDetailPage() {
                               <button
                                 type="button"
                                 onClick={() => removeWordTiming(item.localId, mark.localId)}
-                                className="text-xs text-rose-600"
+                                className={smallDangerButtonClass}
                               >
                                 Remove
                               </button>
@@ -894,7 +1005,7 @@ export default function LessonDetailPage() {
                 <button
                   type="button"
                   onClick={() => addSegment(item.localId)}
-                  className="text-xs font-semibold text-brand-600"
+                  className={smallSecondaryButtonClass}
                 >
                   + Add phrase
                 </button>
@@ -932,20 +1043,20 @@ export default function LessonDetailPage() {
               <button
                 type="button"
                 onClick={downloadMissingTranslationsCsv}
-                className="text-xs font-semibold text-brand-600"
+                className={smallSecondaryButtonClass}
               >
                 Download missing CSV
               </button>
             ) : null}
             <Link
               href="/dashboard/vocabulary/import"
-              className="text-xs font-semibold text-brand-600"
+              className={smallSecondaryButtonClass}
             >
               Import CSV
             </Link>
             <Link
               href="/dashboard/vocabulary"
-              className="text-xs font-semibold text-brand-600"
+              className={smallSecondaryButtonClass}
             >
               Open dictionary
             </Link>
@@ -975,7 +1086,7 @@ export default function LessonDetailPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <Link href="/dashboard/lessons" className="text-sm text-brand-600">
+        <Link href="/dashboard/lessons" className={secondaryButtonClass}>
           ← Back to lessons
         </Link>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
