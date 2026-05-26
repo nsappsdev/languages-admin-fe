@@ -75,6 +75,12 @@ export interface VocabularyEntry {
   translations: VocabularyTranslation[];
 }
 
+export interface PullVocabularyFromTimingsResult {
+  candidates: number;
+  created: number;
+  skipped: number;
+}
+
 export interface LessonDictionaryCoverageItem {
   text: string;
   normalizedText: string;

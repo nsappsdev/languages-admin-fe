@@ -6,6 +6,7 @@ import {
   BulkDeleteResult,
   BulkImportResult,
   BulkImportRow,
+  PullVocabularyFromTimingsResult,
   VocabularyEntry,
   VocabularyKind,
 } from '../lib/apiTypes';
@@ -94,6 +95,14 @@ export const useLessonVocabularyMutations = () => {
     onSuccess: (_data, vars) => invalidate(vars.lessonId),
   });
 
+  const pullFromTimings = useMutation({
+    mutationFn: ({ lessonId }: { lessonId: string }) =>
+      request<PullVocabularyFromTimingsResult>(`/lessons/${lessonId}/vocabulary/pull-from-timings`, {
+        method: 'POST',
+      }),
+    onSuccess: (_data, vars) => invalidate(vars.lessonId),
+  });
+
   const generateAiTranslations = useMutation({
     mutationFn: ({
       lessonId,
@@ -122,6 +131,7 @@ export const useLessonVocabularyMutations = () => {
     deleteEntry,
     generateAiTranslations,
     importEntries,
+    pullFromTimings,
     updateEntry,
   };
 };

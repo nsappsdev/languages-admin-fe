@@ -131,7 +131,7 @@ export default function LessonDetailPage() {
   const lesson = data?.lesson;
   const { updateLesson, uploadLessonAudio, deleteLessonAudio, generateLessonItemTimings } =
     useLessonMutations();
-  const { bulkDeleteEntries, createEntry, deleteEntry, generateAiTranslations, importEntries, updateEntry } =
+  const { bulkDeleteEntries, createEntry, deleteEntry, generateAiTranslations, importEntries, pullFromTimings, updateEntry } =
     useLessonVocabularyMutations();
   const { notify } = useToast();
 
@@ -614,6 +614,22 @@ export default function LessonDetailPage() {
     }
   };
 
+  const pullVocabularyFromTimings = async () => {
+    if (!lessonId) return;
+
+    setCsvImportFeedback(null);
+    try {
+      const result = await pullFromTimings.mutateAsync({ lessonId });
+      const message = `Created ${result.created} terms from saved timings, skipped ${result.skipped}`;
+      setCsvImportFeedback(message);
+      notify(message);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to pull vocabulary from timings';
+      setCsvImportFeedback(message);
+      notify(message, 'error');
+    }
+  };
+
   const generateMissingAiTranslations = async () => {
     if (!lessonId || !missingVocabularyEntries.length) return;
 
@@ -923,15 +939,27 @@ export default function LessonDetailPage() {
                               {segmentWordTimings.length} word/phrase timings
                             </p>
                           </div>
-                          {item.segments.length > 1 && (
+                          <div className="flex flex-wrap justify-end gap-2">
                             <button
                               type="button"
-                              onClick={() => removeSegment(item.localId, segment.localId)}
-                              className={smallDangerButtonClass}
+                              onClick={() => {
+                                void saveLessonItems();
+                              }}
+                              disabled={updateLesson.isPending}
+                              className={smallSecondaryButtonClass}
                             >
-                              Remove
+                              {updateLesson.isPending ? 'Saving…' : 'Save segment timings'}
                             </button>
-                          )}
+                            {item.segments.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeSegment(item.localId, segment.localId)}
+                                className={smallDangerButtonClass}
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <textarea
                           value={segment.text}
@@ -1134,7 +1162,7 @@ export default function LessonDetailPage() {
     const emptyListMessage =
       vocabularyTab === 'missing'
         ? 'All word and phrase terms currently have Armenian translations.'
-        : 'Save lesson text to auto-create editable vocabulary terms.';
+        : 'Save segment timings, then use Create from timings to add editable vocabulary terms.';
 
     return (
       <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
@@ -1229,7 +1257,9 @@ export default function LessonDetailPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-slate-900">CSV translations</p>
-              <p className="text-xs text-slate-500">Download missing terms, fill translations, then import the same file.</p>
+              <p className="text-xs text-slate-500">
+                Save segment timings first, create terms from those timings, then download/import translations.
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -1253,6 +1283,16 @@ export default function LessonDetailPage() {
                   }}
                 />
               </label>
+              <button
+                type="button"
+                onClick={() => {
+                  void pullVocabularyFromTimings();
+                }}
+                disabled={pullFromTimings.isPending}
+                className={smallSecondaryButtonClass}
+              >
+                {pullFromTimings.isPending ? 'Creating…' : 'Create from timings'}
+              </button>
             </div>
           </div>
           {csvImportFeedback ? (
