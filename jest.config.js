@@ -6,9 +6,11 @@ const createJestConfig = nextJest({
 
 const customJestConfig = {
   coverageProvider: 'v8',
+  modulePathIgnorePatterns: ['<rootDir>/.next/'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testEnvironment: 'jest-environment-jsdom',
   testPathIgnorePatterns: ['/node_modules/', '/.next/'],
+  watchPathIgnorePatterns: ['<rootDir>/.next/'],
 };
 
 module.exports = createJestConfig(customJestConfig);

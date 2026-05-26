@@ -25,15 +25,6 @@ const Icon = ({ children }: { children: ReactNode }) => (
 
 const TABS: Tab[] = [
   {
-    href: '/dashboard',
-    label: 'Overview',
-    icon: (
-      <Icon>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9-9 9 9M5 10v10h14V10" />
-      </Icon>
-    ),
-  },
-  {
     href: '/dashboard/lessons',
     label: 'Lessons',
     matchPrefix: true,
@@ -41,16 +32,6 @@ const TABS: Tab[] = [
       <Icon>
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 4h12a4 4 0 014 4v12H8a4 4 0 01-4-4V4z" />
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v16" />
-      </Icon>
-    ),
-  },
-  {
-    href: '/dashboard/vocabulary',
-    label: 'Vocab',
-    matchPrefix: true,
-    icon: (
-      <Icon>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
       </Icon>
     ),
   },

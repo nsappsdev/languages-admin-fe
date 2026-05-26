@@ -1,14 +1,7 @@
 import Papa from 'papaparse';
 import type { LessonDictionaryCoverageItem } from './apiTypes';
 
-const MISSING_TRANSLATION_HEADERS = [
-  'englishText',
-  'translation',
-  'kind',
-  'notes',
-  'tags',
-  'usageExample',
-];
+const MISSING_TRANSLATION_HEADERS = ['englishText', 'translation'];
 
 export function buildMissingTranslationsCsv(
   items: LessonDictionaryCoverageItem[],
@@ -19,10 +12,6 @@ export function buildMissingTranslationsCsv(
     data: items.map((item) => ({
       englishText: item.text,
       translation: '',
-      kind: item.kind,
-      notes: `Missing Armenian translation for ${lessonTitle}`,
-      tags: 'lesson-missing-translation',
-      usageExample: '',
     })),
   });
 }

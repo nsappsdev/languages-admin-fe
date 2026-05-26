@@ -19,7 +19,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       await login(email, password);
-      router.push('/dashboard');
+      router.push('/dashboard/lessons');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to login');
     } finally {
@@ -29,7 +29,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && user) {
-      router.replace('/dashboard');
+      router.replace('/dashboard/lessons');
     }
   }, [isLoading, router, user]);
 

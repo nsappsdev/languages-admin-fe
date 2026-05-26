@@ -3,23 +3,13 @@
 import { useRouter } from 'next/navigation';
 import { FormEvent, useMemo, useState } from 'react';
 import { useApiClient } from '../../../../../hooks/useApiClient';
-import { LessonItem, LessonItemSegment, LessonStatus } from '../../../../../lib/apiTypes';
+import { LessonItem, LessonStatus } from '../../../../../lib/apiTypes';
 
-type EditableSegment = LessonItemSegment & { localId: string };
-type EditableItem = Omit<
-  LessonItem,
-  'segments' | 'wordTimings' | 'sentenceTimings'
-> & {
+type EditableItem = Pick<LessonItem, 'id' | 'lessonId' | 'text' | 'audioUrl' | 'order'> & {
   localId: string;
-  segments: EditableSegment[];
-  wordTimings: LessonItem['wordTimings'];
-  sentenceTimings: LessonItem['sentenceTimings'];
 };
 
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
-
-const smallSecondaryButtonClass =
-  'inline-flex items-center justify-center rounded-md border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50';
 
 const smallNeutralButtonClass =
   'inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
@@ -32,14 +22,6 @@ const createLocalId = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 
-const createSegment = (startMs = 0, endMs = startMs + 1000): EditableSegment => ({
-  id: createLocalId(),
-  localId: createLocalId(),
-  text: '',
-  startMs,
-  endMs,
-});
-
 const createItem = (order: number): EditableItem => ({
   id: createLocalId(),
   lessonId: '',
@@ -47,9 +29,6 @@ const createItem = (order: number): EditableItem => ({
   text: '',
   audioUrl: '',
   order,
-  segments: [createSegment()],
-  wordTimings: [],
-  sentenceTimings: [],
 });
 
 export default function NewLessonPage() {
@@ -71,15 +50,6 @@ export default function NewLessonPage() {
     currentItems.map((item, index): EditableItem => ({
       ...item,
       order: index,
-      segments: item.segments.map((segment): EditableSegment => ({
-        id: segment.id,
-        localId: segment.localId,
-        text: segment.text,
-        startMs: Number(segment.startMs),
-        endMs: Number(segment.endMs),
-      })),
-      wordTimings: item.wordTimings,
-      sentenceTimings: item.sentenceTimings,
     }));
 
   const updateItem = (localId: string, updater: (item: EditableItem) => EditableItem) => {
@@ -111,64 +81,17 @@ export default function NewLessonPage() {
     );
   };
 
-  const addSegment = (itemLocalId: string) => {
-    updateItem(itemLocalId, (item) => {
-      const lastSegment = item.segments[item.segments.length - 1];
-      const startMs = Number.isFinite(lastSegment?.endMs) ? Number(lastSegment?.endMs) : 0;
-      return {
-        ...item,
-        segments: [...item.segments, createSegment(startMs)],
-      };
-    });
-  };
-
-  const removeSegment = (itemLocalId: string, segmentLocalId: string) => {
-    updateItem(itemLocalId, (item) => ({
-      ...item,
-      segments: item.segments.filter((segment) => segment.localId !== segmentLocalId),
-    }));
-  };
-
-  const initializeItemSegments = (itemLocalId: string) => {
-    const currentItem = items.find((item) => item.localId === itemLocalId);
-    if (!currentItem) return;
-
-    const segments = buildSentenceSegments(currentItem);
-    if (!segments.length) {
-      setError('Add item text before initializing whole-text timings.');
-      return;
-    }
-
-    updateItem(itemLocalId, (item) => ({
-      ...item,
-      segments,
-      wordTimings: [],
-      sentenceTimings: [],
-    }));
-    setError(null);
-  };
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
 
     const normalizedItems = normalizeItems(sortedItems);
-    const hasInvalidItems = normalizedItems.some(
-      (item) =>
-        item.text.trim().length < 1 ||
-        item.segments.length < 1 ||
-        item.segments.some(
-          (segment) =>
-            segment.text.trim().length < 1 ||
-            Number.isNaN(segment.startMs) ||
-            Number.isNaN(segment.endMs) ||
-            segment.endMs <= segment.startMs,
-        ),
-    );
+    const hasInvalidItems =
+      normalizedItems.length < 1 || normalizedItems.some((item) => item.text.trim().length < 1);
 
     if (hasInvalidItems) {
-      setError('Each item needs text and valid phrase timings before the lesson can be created.');
+      setError('Add at least one lesson item with text before creating the lesson.');
       setIsSubmitting(false);
       return;
     }
@@ -185,14 +108,9 @@ export default function NewLessonPage() {
             text: item.text,
             audioUrl: item.audioUrl,
             order: index,
-            segments: item.segments.map(({ id, text, startMs, endMs }) => ({
-              id,
-              text,
-              startMs,
-              endMs,
-            })),
-            wordTimings: item.wordTimings,
-            sentenceTimings: item.sentenceTimings,
+            segments: buildCreateSegments(item, index),
+            wordTimings: [],
+            sentenceTimings: [],
           })),
         }),
       });
@@ -217,8 +135,11 @@ export default function NewLessonPage() {
           onSubmit={handleSubmit}
         >
           <div>
-            <label className="block text-sm font-medium text-slate-700">Title</label>
+            <label htmlFor="lesson-title" className="block text-sm font-medium text-slate-700">
+              Title
+            </label>
             <input
+              id="lesson-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
@@ -226,8 +147,11 @@ export default function NewLessonPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700">Description</label>
+            <label htmlFor="lesson-description" className="block text-sm font-medium text-slate-700">
+              Description
+            </label>
             <textarea
+              id="lesson-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
@@ -278,7 +202,7 @@ export default function NewLessonPage() {
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Lesson Items</h2>
               <p className="text-xs text-slate-500">
-                Add the lesson text and phrase timings before you create the lesson.
+                Add lesson text. Audio and AI timings can be generated after the lesson is created.
               </p>
             </div>
             <button
@@ -326,8 +250,14 @@ export default function NewLessonPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-500">Text</label>
+                  <label
+                    htmlFor={`lesson-item-text-${item.localId}`}
+                    className="block text-xs font-medium text-slate-500"
+                  >
+                    Text
+                  </label>
                   <textarea
+                    id={`lesson-item-text-${item.localId}`}
                     value={item.text}
                     onChange={(e) =>
                       updateItem(item.localId, (current) => ({
@@ -339,104 +269,6 @@ export default function NewLessonPage() {
                     rows={5}
                   />
                 </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-medium text-slate-500">Phrase Timings</label>
-                    <div className="flex flex-wrap justify-end gap-3">
-                      <button
-                        type="button"
-                        onClick={() => initializeItemSegments(item.localId)}
-                        className={smallSecondaryButtonClass}
-                      >
-                        Initialize whole text
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => addSegment(item.localId)}
-                        className={smallSecondaryButtonClass}
-                      >
-                        + Add phrase
-                      </button>
-                    </div>
-                  </div>
-
-                  {item.segments.map((segment) => (
-                    <div
-                      key={segment.localId}
-                      className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <p className="text-xs font-medium text-slate-500">Segment</p>
-                        {item.segments.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeSegment(item.localId, segment.localId)}
-                            className={smallDangerButtonClass}
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                      <textarea
-                        value={segment.text}
-                        onChange={(e) =>
-                          updateItem(item.localId, (current) => ({
-                            ...current,
-                            segments: current.segments.map((entry) =>
-                              entry.localId === segment.localId
-                                ? { ...entry, text: e.target.value }
-                                : entry,
-                            ),
-                          }))
-                        }
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        rows={2}
-                        placeholder="Phrase text"
-                      />
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="block text-xs font-medium text-slate-500">Start (ms)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={segment.startMs}
-                            onChange={(e) =>
-                              updateItem(item.localId, (current) => ({
-                                ...current,
-                                segments: current.segments.map((entry) =>
-                                  entry.localId === segment.localId
-                                    ? { ...entry, startMs: Number(e.target.value) }
-                                    : entry,
-                                ),
-                              }))
-                            }
-                            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-slate-500">End (ms)</label>
-                          <input
-                            type="number"
-                            min={1}
-                            value={segment.endMs}
-                            onChange={(e) =>
-                              updateItem(item.localId, (current) => ({
-                                ...current,
-                                segments: current.segments.map((entry) =>
-                                  entry.localId === segment.localId
-                                    ? { ...entry, endMs: Number(e.target.value) }
-                                    : entry,
-                                ),
-                              }))
-                            }
-                            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
             ))}
           </div>
@@ -446,135 +278,13 @@ export default function NewLessonPage() {
   );
 }
 
-function buildSentenceSegments(item: EditableItem): EditableSegment[] {
-  const sentenceParts = splitTextIntoSentences(item.text);
-  if (!sentenceParts.length) {
-    return [];
-  }
-
-  const timingWindow = getItemTimingWindow(item, sentenceParts.length);
-  const segments: EditableSegment[] = [];
-  let previousEndMs = timingWindow.startMs;
-
-  sentenceParts.forEach((part, index) => {
-    const startMs = index === 0 ? timingWindow.startMs : previousEndMs;
-    const estimatedEndMs =
-      index === sentenceParts.length - 1
-        ? timingWindow.endMs
-        : estimateMsFromTextOffsetInWindow(
-            item.text,
-            part.end,
-            timingWindow.startMs,
-            timingWindow.endMs,
-          );
-    const endMs = Math.min(
-      timingWindow.endMs,
-      Math.max(startMs + 100, estimatedEndMs),
-    );
-
-    segments.push({
-      id: createLocalId(),
-      localId: createLocalId(),
-      text: part.text,
-      startMs,
-      endMs,
-    });
-    previousEndMs = endMs;
-  });
-
-  return segments;
-}
-
-function splitTextIntoSentences(value: string): Array<{ text: string; start: number; end: number }> {
-  const sentences: Array<{ text: string; start: number; end: number }> = [];
-  const matcher = /[^.!?]+(?:[.!?]+|$)/g;
-
-  for (const match of value.matchAll(matcher)) {
-    const rawText = match[0] ?? '';
-    const rawStart = match.index ?? 0;
-    const leadingWhitespace = rawText.match(/^\s*/)?.[0].length ?? 0;
-    const trailingWhitespace = rawText.match(/\s*$/)?.[0].length ?? 0;
-    const start = rawStart + leadingWhitespace;
-    const end = rawStart + rawText.length - trailingWhitespace;
-    const text = value.slice(start, end).trim();
-    if (text) {
-      sentences.push({ text, start, end });
-    }
-  }
-
-  if (sentences.length) {
-    return sentences;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return [];
-  }
-
-  const start = value.indexOf(trimmed);
-  return [{ text: trimmed, start, end: start + trimmed.length }];
-}
-
-function getItemTimingWindow(
-  item: EditableItem,
-  sentenceCount: number,
-): { startMs: number; endMs: number } {
-  const validSegments = item.segments.filter(
-    (segment) =>
-      Number.isFinite(segment.startMs) &&
-      Number.isFinite(segment.endMs) &&
-      segment.endMs > segment.startMs,
-  );
-  const hasOnlyDefaultEmptySegment =
-    validSegments.length === 1 &&
-    item.segments.length === 1 &&
-    !item.segments[0]?.text.trim() &&
-    validSegments[0]?.startMs === 0 &&
-    validSegments[0]?.endMs === 1000;
-
-  if (validSegments.length && !hasOnlyDefaultEmptySegment) {
-    const startMs = Math.min(...validSegments.map((segment) => segment.startMs));
-    const endMs = Math.max(...validSegments.map((segment) => segment.endMs));
-    if (endMs > startMs) {
-      return { startMs, endMs };
-    }
-  }
-
-  return {
-    startMs: 0,
-    endMs: Math.max(1000, sentenceCount * 3000),
-  };
-}
-
-function estimateMsFromTextOffsetInWindow(
-  text: string,
-  offset: number,
-  startMs: number,
-  endMs: number,
-) {
-  const ratio = getSpeechOffsetRatio(text, offset);
-  return Math.min(
-    endMs,
-    Math.max(startMs, startMs + Math.floor((endMs - startMs) * ratio)),
-  );
-}
-
-function getSpeechOffsetRatio(text: string, offset: number) {
-  const boundedOffset = Math.min(Math.max(offset, 0), text.length);
-  const totalWeight = getSpeechWeight(text);
-  if (totalWeight <= 0) {
-    const textLength = Math.max(text.length, 1);
-    return Math.min(Math.max(boundedOffset / textLength, 0), 1);
-  }
-
-  return Math.min(Math.max(getSpeechWeight(text.slice(0, boundedOffset)) / totalWeight, 0), 1);
-}
-
-function getSpeechWeight(value: string) {
-  const matches = value.match(/[A-Za-z0-9']+/g);
-  if (!matches?.length) {
-    return value.trim().length;
-  }
-
-  return matches.reduce((sum, part) => sum + part.length, 0);
+function buildCreateSegments(item: EditableItem, itemIndex: number): LessonItem['segments'] {
+  return [
+    {
+      id: `segment-${itemIndex + 1}`,
+      text: item.text.trim(),
+      startMs: 0,
+      endMs: 1000,
+    },
+  ];
 }
