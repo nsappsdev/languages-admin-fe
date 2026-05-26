@@ -56,6 +56,7 @@ export type VocabularyKind = 'WORD' | 'PHRASE' | 'SENTENCE';
 
 export interface VocabularyTranslation {
   id: string;
+  entryId?: string;
   languageCode: string;
   translation: string;
   usageExample?: string | null;
@@ -63,11 +64,21 @@ export interface VocabularyTranslation {
 
 export interface VocabularyEntry {
   id: string;
+  lessonId?: string;
+  sourceItemId?: string | null;
   englishText: string;
+  normalizedText?: string;
   kind: VocabularyKind;
+  order?: number;
   notes?: string | null;
   tags: string[];
   translations: VocabularyTranslation[];
+}
+
+export interface PullVocabularyFromTimingsResult {
+  candidates: number;
+  created: number;
+  skipped: number;
 }
 
 export interface LessonDictionaryCoverageItem {
@@ -78,6 +89,8 @@ export interface LessonDictionaryCoverageItem {
   hasTranslation: boolean;
   hasArmenianTranslation: boolean;
   translations: VocabularyTranslation[];
+  matched?: boolean;
+  matchCount?: number;
 }
 
 export interface LessonSummary {
@@ -88,6 +101,8 @@ export interface LessonSummary {
   items: LessonItem[];
   dictionary?: VocabularyEntry[];
   dictionaryCoverage?: LessonDictionaryCoverageItem[];
+  vocabulary?: VocabularyEntry[];
+  vocabularyCoverage?: LessonDictionaryCoverageItem[];
 }
 
 export interface LearnerSummary {
@@ -182,6 +197,11 @@ export interface BulkImportResult {
   mergedTranslations: number;
   skipped: number;
   errors: Array<{ row: number; message: string }>;
+}
+
+export interface BulkAiTranslationResult {
+  translated: number;
+  skipped: number;
 }
 
 export interface BulkDeleteResult {
