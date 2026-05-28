@@ -66,6 +66,11 @@ export default function SettingsPage() {
         translationFontMaxSize: form.translationFontMaxSize,
         translationLetterSpacingMin: form.translationLetterSpacingMin,
         translationLetterSpacingMax: form.translationLetterSpacingMax,
+        updatePolicyEnabled: form.updatePolicyEnabled ?? false,
+        latestAndroidBuildNumber: form.latestAndroidBuildNumber ?? 0,
+        minAndroidBuildNumber: form.minAndroidBuildNumber ?? 0,
+        androidStoreUrl: form.androidStoreUrl ?? '',
+        updateMessage: form.updateMessage?.trim() || 'A newer app version is available.',
       },
       {
         onSuccess: () => {
@@ -393,6 +398,96 @@ export default function SettingsPage() {
         <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
           Armenian labels fit above the English word inside this size and spacing range.
         </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+            App update policy
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Android compares the installed native build number with these values.
+          </p>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+          <input
+            type="checkbox"
+            checked={form.updatePolicyEnabled ?? false}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                updatePolicyEnabled: event.target.checked,
+              }))
+            }
+            className="h-4 w-4 accent-brand-600"
+          />
+          Enable update prompts
+        </label>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h4 className="text-sm font-semibold text-slate-800">Android</h4>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="block text-xs font-medium text-slate-500">Latest build</span>
+              <input
+                type="number"
+                min={0}
+                value={form.latestAndroidBuildNumber ?? 0}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    latestAndroidBuildNumber: Number(event.target.value),
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="block text-xs font-medium text-slate-500">Minimum build</span>
+              <input
+                type="number"
+                min={0}
+                value={form.minAndroidBuildNumber ?? 0}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    minAndroidBuildNumber: Number(event.target.value),
+                  }))
+                }
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+          <label className="mt-3 block space-y-1">
+            <span className="block text-xs font-medium text-slate-500">Play Store URL</span>
+            <input
+              value={form.androidStoreUrl ?? ''}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  androidStoreUrl: event.target.value,
+                }))
+              }
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+
+        <label className="block space-y-1">
+          <span className="block text-sm font-medium text-slate-700">Update message</span>
+          <textarea
+            value={form.updateMessage ?? 'A newer app version is available.'}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                updateMessage: event.target.value,
+              }))
+            }
+            rows={3}
+            className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </label>
       </section>
 
       {/* Live preview */}

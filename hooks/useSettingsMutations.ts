@@ -16,6 +16,14 @@ type UpdateSettingsInput = Partial<
     | 'translationFontMaxSize'
     | 'translationLetterSpacingMin'
     | 'translationLetterSpacingMax'
+    | 'updatePolicyEnabled'
+    | 'latestAndroidBuildNumber'
+    | 'minAndroidBuildNumber'
+    | 'latestIosBuildNumber'
+    | 'minIosBuildNumber'
+    | 'androidStoreUrl'
+    | 'iosStoreUrl'
+    | 'updateMessage'
   >
 >;
 

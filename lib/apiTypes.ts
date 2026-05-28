@@ -179,6 +179,14 @@ export interface AppSettings {
   translationFontMaxSize: number;
   translationLetterSpacingMin: number;
   translationLetterSpacingMax: number;
+  updatePolicyEnabled: boolean;
+  latestAndroidBuildNumber: number;
+  minAndroidBuildNumber: number;
+  latestIosBuildNumber: number;
+  minIosBuildNumber: number;
+  androidStoreUrl: string;
+  iosStoreUrl: string;
+  updateMessage: string;
   createdAt: string;
   updatedAt: string;
 }
