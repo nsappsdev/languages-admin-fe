@@ -111,6 +111,7 @@ export default function NewLessonPage() {
             segments: buildCreateSegments(item, index),
             wordTimings: [],
             sentenceTimings: [],
+            chunkTimings: [],
           })),
         }),
       });

@@ -66,6 +66,7 @@ export default function SettingsPage() {
         translationFontMaxSize: form.translationFontMaxSize,
         translationLetterSpacingMin: form.translationLetterSpacingMin,
         translationLetterSpacingMax: form.translationLetterSpacingMax,
+        wordRepetitionPauseMs: form.wordRepetitionPauseMs ?? 800,
         updatePolicyEnabled: form.updatePolicyEnabled ?? false,
         latestAndroidBuildNumber: form.latestAndroidBuildNumber ?? 0,
         minAndroidBuildNumber: form.minAndroidBuildNumber ?? 0,
@@ -259,6 +260,41 @@ export default function SettingsPage() {
               ) : null}
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+          Word repetition timing
+        </h3>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <label className="space-y-1">
+            <span className="block text-sm font-medium text-slate-700">
+              Pause between repeated words
+            </span>
+            <span className="block text-xs text-slate-500">
+              Teaching and Deep Learning wait this long before replaying an unknown word.
+            </span>
+            <div className="mt-2 flex items-center gap-3">
+              <input
+                type="number"
+                min={0}
+                max={3000}
+                step={100}
+                value={form.wordRepetitionPauseMs ?? 800}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    wordRepetitionPauseMs: Number(event.target.value),
+                  }))
+                }
+                className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+              <span className="text-sm text-slate-500">
+                {((form.wordRepetitionPauseMs ?? 800) / 1000).toFixed(1)}s
+              </span>
+            </div>
+          </label>
         </div>
       </section>
 
