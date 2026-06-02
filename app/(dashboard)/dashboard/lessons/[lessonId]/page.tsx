@@ -11,6 +11,7 @@ import { ConfirmDialog } from '../../../../../components/ui/ConfirmDialog';
 import {
   GeneratedLessonTimings,
   LessonItem,
+  LessonItemChunkTiming,
   LessonItemSegment,
   LessonItemSentenceTiming,
   LessonItemWordTiming,
@@ -44,14 +45,16 @@ const vocabularyTabButtonClass =
 type EditableSegment = LessonItemSegment & { localId: string };
 type EditableWordTiming = LessonItemWordTiming & { localId: string; segmentLocalId?: string };
 type EditableSentenceTiming = LessonItemSentenceTiming & { localId: string };
+type EditableChunkTiming = LessonItemChunkTiming & { localId: string };
 type EditableItem = Omit<
   LessonItem,
-  'segments' | 'wordTimings' | 'sentenceTimings'
+  'segments' | 'wordTimings' | 'sentenceTimings' | 'chunkTimings'
 > & {
   localId: string;
   segments: EditableSegment[];
   wordTimings: EditableWordTiming[];
   sentenceTimings: EditableSentenceTiming[];
+  chunkTimings: EditableChunkTiming[];
 };
 
 type VocabularyPanelTab = 'missing' | 'all';
@@ -76,6 +79,11 @@ const toEditableWordTiming = (
 });
 
 const toEditableSentenceTiming = (mark: LessonItemSentenceTiming): EditableSentenceTiming => ({
+  ...mark,
+  localId: mark.id,
+});
+
+const toEditableChunkTiming = (mark: LessonItemChunkTiming): EditableChunkTiming => ({
   ...mark,
   localId: mark.id,
 });
@@ -121,6 +129,7 @@ const toEditableItem = (item: LessonItem): EditableItem => {
     segments,
     wordTimings: (item.wordTimings ?? []).map((mark) => toEditableWordTiming(mark, segments)),
     sentenceTimings: (item.sentenceTimings ?? []).map(toEditableSentenceTiming),
+    chunkTimings: (item.chunkTimings ?? []).map(toEditableChunkTiming),
   };
 };
 
@@ -129,7 +138,7 @@ export default function LessonDetailPage() {
   const lessonId = params?.lessonId ?? '';
   const { data, isLoading, error } = useLesson(lessonId);
   const lesson = data?.lesson;
-  const { updateLesson, uploadLessonAudio, deleteLessonAudio, generateLessonItemTimings } =
+  const { updateLesson, updateLessonSegmentTimings, uploadLessonAudio, deleteLessonAudio, generateLessonItemTimings } =
     useLessonMutations();
   const { bulkDeleteEntries, createEntry, deleteEntry, generateAiTranslations, importEntries, pullFromTimings, updateEntry } =
     useLessonVocabularyMutations();
@@ -144,6 +153,7 @@ export default function LessonDetailPage() {
   const [uploadingItemLocalId, setUploadingItemLocalId] = useState<string | null>(null);
   const [deletingItemLocalId, setDeletingItemLocalId] = useState<string | null>(null);
   const [generatingTimingsItemLocalId, setGeneratingTimingsItemLocalId] = useState<string | null>(null);
+  const [savingTimingSegmentKey, setSavingTimingSegmentKey] = useState<string | null>(null);
   const [timingWarningsByItemId, setTimingWarningsByItemId] = useState<Record<string, string[]>>({});
   const [openTimingSegments, setOpenTimingSegments] = useState<Record<string, true>>({});
   const [deleteAudioTarget, setDeleteAudioTarget] = useState<{
@@ -153,6 +163,7 @@ export default function LessonDetailPage() {
   const [vocabularyForm, setVocabularyForm] = useState({
     englishText: '',
     translation: '',
+    focusText: '',
   });
   const [editingVocabularyId, setEditingVocabularyId] = useState<string | null>(null);
   const [selectedVocabularyIds, setSelectedVocabularyIds] = useState<string[]>([]);
@@ -236,6 +247,42 @@ export default function LessonDetailPage() {
           order: markIndex,
         }),
       );
+      const wordTimingsById = new Map(wordTimings.map((mark) => [mark.id, mark]));
+      const linkedWordIds = new Set<string>();
+      const chunkTimings = orderChunkTimings(
+        [
+          ...(item.chunkTimings ?? [])
+            .map((mark) => {
+              const wordMarkIds = mark.wordMarkIds.filter((wordMarkId) =>
+                wordTimingsById.has(wordMarkId),
+              );
+              if (!wordMarkIds.length) {
+                return null;
+              }
+              wordMarkIds.forEach((wordMarkId) => linkedWordIds.add(wordMarkId));
+              return deriveChunkTimingFromWords(mark, wordMarkIds, wordTimingsById);
+            })
+            .filter((mark): mark is EditableChunkTiming => Boolean(mark)),
+          ...wordTimings
+            .filter((mark) => !linkedWordIds.has(mark.id))
+            .map((mark) =>
+              deriveChunkTimingFromWords(
+                {
+                  id: createLocalId(),
+                  localId: createLocalId(),
+                  text: mark.text,
+                  normalizedText: mark.normalizedText,
+                  startMs: mark.startMs,
+                  endMs: mark.endMs,
+                  wordMarkIds: [mark.id],
+                  order: mark.order,
+                },
+                [mark.id],
+                wordTimingsById,
+              ),
+            ),
+        ],
+      );
 
       return {
         ...item,
@@ -243,6 +290,7 @@ export default function LessonDetailPage() {
         segments,
         wordTimings,
         sentenceTimings: deriveSegmentSentenceTimings(segments, wordTimings),
+        chunkTimings,
       };
     });
 
@@ -291,6 +339,14 @@ export default function LessonDetailPage() {
             Number.isNaN(mark.startMs) ||
             Number.isNaN(mark.endMs) ||
             mark.endMs <= mark.startMs,
+        ) ||
+        item.chunkTimings.some(
+          (mark) =>
+            mark.text.trim().length < 1 ||
+            Number.isNaN(mark.startMs) ||
+            Number.isNaN(mark.endMs) ||
+            mark.endMs <= mark.startMs ||
+            mark.wordMarkIds.length < 1,
         ),
     );
 
@@ -335,6 +391,17 @@ export default function LessonDetailPage() {
                 order,
               }),
             ),
+            chunkTimings: item.chunkTimings.map(
+              ({ id, text, normalizedText, startMs, endMs, wordMarkIds, order }) => ({
+                id,
+                text,
+                normalizedText,
+                startMs,
+                endMs,
+                wordMarkIds,
+                order,
+              }),
+            ),
           })),
         },
       });
@@ -349,6 +416,82 @@ export default function LessonDetailPage() {
       setItemsFeedback(message);
       notify(message, 'error');
       return false;
+    }
+  };
+
+  const saveSegmentTimings = async (item: EditableItem, segment: EditableSegment) => {
+    if (!lessonId || !item.id) {
+      return saveLessonItems();
+    }
+
+    const key = getTimingSegmentKey(item.localId, segment.localId);
+    const normalizedItem = normalizeItems([item])[0];
+    const normalizedSegment = normalizedItem.segments.find((entry) => entry.id === segment.id);
+    if (!normalizedSegment) {
+      setItemsFeedback('Could not find the segment to save.');
+      return false;
+    }
+
+    const segmentWordTimings = getSegmentWordTimings(
+      normalizedItem.wordTimings,
+      normalizedSegment,
+      normalizedItem.segments,
+    );
+    const segmentWordTimingIds = new Set(segmentWordTimings.map((mark) => mark.id));
+    const segmentChunkTimings = normalizedItem.chunkTimings.filter((chunk) =>
+      chunk.wordMarkIds.some((wordMarkId) => segmentWordTimingIds.has(wordMarkId)),
+    );
+
+    setItemsFeedback('Saving segment timings…');
+    setSavingTimingSegmentKey(key);
+    try {
+      const response = await updateLessonSegmentTimings.mutateAsync({
+        lessonId,
+        itemId: item.id,
+        segmentId: segment.id,
+        segment: {
+          id: normalizedSegment.id,
+          text: normalizedSegment.text,
+          startMs: normalizedSegment.startMs,
+          endMs: normalizedSegment.endMs,
+        },
+        wordTimings: segmentWordTimings.map(
+          ({ id, text, normalizedText, startMs, endMs, order }) => ({
+            id,
+            text,
+            normalizedText,
+            startMs,
+            endMs,
+            order,
+          }),
+        ),
+        chunkTimings: segmentChunkTimings.map(
+          ({ id, text, normalizedText, startMs, endMs, wordMarkIds, order }) => ({
+            id,
+            text,
+            normalizedText,
+            startMs,
+            endMs,
+            wordMarkIds,
+            order,
+          }),
+        ),
+      });
+      setItems((current) =>
+        current.map((entry) =>
+          entry.id === response.item.id ? toEditableItem(response.item) : entry,
+        ),
+      );
+      setItemsFeedback('Segment timings saved');
+      notify('Segment timings saved');
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save segment timings';
+      setItemsFeedback(message);
+      notify(message, 'error');
+      return false;
+    } finally {
+      setSavingTimingSegmentKey((current) => (current === key ? null : current));
     }
   };
 
@@ -426,6 +569,23 @@ export default function LessonDetailPage() {
             return segment ? !isTimingInsideSegment(mark, segment) : true;
           }),
         ),
+        chunkTimings: orderChunkTimings(
+          item.chunkTimings
+            .map((chunk) => ({
+              ...chunk,
+              wordMarkIds: chunk.wordMarkIds.filter((wordMarkId) =>
+                item.wordTimings.some((mark) => {
+                  if (mark.id !== wordMarkId) return false;
+                  if (mark.segmentLocalId) {
+                    return mark.segmentLocalId !== segmentLocalId;
+                  }
+                  const segment = item.segments.find((entry) => entry.localId === segmentLocalId);
+                  return segment ? !isTimingInsideSegment(mark, segment) : true;
+                }),
+              ),
+            }))
+            .filter((chunk) => chunk.wordMarkIds.length > 0),
+        ),
       };
     });
   };
@@ -443,12 +603,25 @@ export default function LessonDetailPage() {
         : segment.startMs;
       const endMs = Math.max(startMs + 1, Math.min(startMs + 250, segment.endMs));
 
+      const wordTiming = createWordTiming('', startMs, endMs, item.wordTimings.length, segmentLocalId);
+      const chunkTiming: EditableChunkTiming = {
+        id: createLocalId(),
+        localId: createLocalId(),
+        text: wordTiming.text,
+        normalizedText: wordTiming.normalizedText,
+        startMs: wordTiming.startMs,
+        endMs: wordTiming.endMs,
+        wordMarkIds: [wordTiming.id],
+        order: item.chunkTimings.length,
+      };
+
       return {
         ...item,
         wordTimings: orderWordTimingsBySegment(item.segments, [
           ...item.wordTimings,
-          createWordTiming('', startMs, endMs, item.wordTimings.length, segmentLocalId),
+          wordTiming,
         ]),
+        chunkTimings: orderChunkTimings([...item.chunkTimings, chunkTiming]),
       };
     });
   };
@@ -470,6 +643,16 @@ export default function LessonDetailPage() {
             ? sentence.wordMarkIds.filter((wordMarkId) => wordMarkId !== removed.id)
             : sentence.wordMarkIds,
         })),
+        chunkTimings: orderChunkTimings(
+          item.chunkTimings
+            .map((chunk) => ({
+              ...chunk,
+              wordMarkIds: removed
+                ? chunk.wordMarkIds.filter((wordMarkId) => wordMarkId !== removed.id)
+                : chunk.wordMarkIds,
+            }))
+            .filter((chunk) => chunk.wordMarkIds.length > 0),
+        ),
       };
     });
   };
@@ -530,6 +713,7 @@ export default function LessonDetailPage() {
       segments,
       wordTimings: timings.wordTimings.map((mark) => toEditableWordTiming(mark, segments)),
       sentenceTimings: timings.sentenceTimings.map(toEditableSentenceTiming),
+      chunkTimings: timings.chunkTimings.map(toEditableChunkTiming),
     }));
   };
 
@@ -553,8 +737,9 @@ export default function LessonDetailPage() {
       const warningSuffix = response.timings.warnings.length
         ? ` with ${response.timings.warnings.length} warning(s)`
         : '';
-      setItemsFeedback(`AI timings generated${warningSuffix}. Review and save items.`);
-      notify(`AI timings generated${warningSuffix}`);
+      const chunkSuffix = ` (${response.timings.chunkTimings.length} logical parts)`;
+      setItemsFeedback(`AI timings generated${chunkSuffix}${warningSuffix}. Review and save items.`);
+      notify(`AI timings generated${chunkSuffix}${warningSuffix}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to generate AI timings';
       setItemsFeedback(message);
@@ -656,6 +841,7 @@ export default function LessonDetailPage() {
     setVocabularyForm({
       englishText: '',
       translation: '',
+      focusText: '',
     });
     setEditingVocabularyId(null);
   };
@@ -665,6 +851,7 @@ export default function LessonDetailPage() {
     setVocabularyForm({
       englishText: entry.englishText,
       translation: getArmenianTranslation(entry) ?? '',
+      focusText: entry.focusText ?? '',
     });
   };
 
@@ -681,6 +868,7 @@ export default function LessonDetailPage() {
       : [];
     const payload = {
       englishText: vocabularyForm.englishText.trim(),
+      focusText: vocabularyForm.focusText.trim() || null,
       translations,
     };
 
@@ -923,6 +1111,10 @@ export default function LessonDetailPage() {
                       segment,
                       item.segments,
                     );
+                    const segmentLogicalParts = getSegmentLogicalParts(
+                      item.chunkTimings,
+                      segmentWordTimings,
+                    );
                     const isWordTimingOpen = Boolean(
                       openTimingSegments[getTimingSegmentKey(item.localId, segment.localId)],
                     );
@@ -936,19 +1128,26 @@ export default function LessonDetailPage() {
                           <div>
                             <p className="text-xs font-medium text-slate-500">Segment {segmentIndex + 1}</p>
                             <p className="text-[11px] text-slate-400">
-                              {segmentWordTimings.length} word/phrase timings
+                              {segmentLogicalParts.length} logical parts, {segmentWordTimings.length} word timings
                             </p>
                           </div>
                           <div className="flex flex-wrap justify-end gap-2">
                             <button
                               type="button"
                               onClick={() => {
-                                void saveLessonItems();
+                                void saveSegmentTimings(item, segment);
                               }}
-                              disabled={updateLesson.isPending}
+                              disabled={
+                                updateLessonSegmentTimings.isPending ||
+                                savingTimingSegmentKey ===
+                                  getTimingSegmentKey(item.localId, segment.localId)
+                              }
                               className={smallSecondaryButtonClass}
                             >
-                              {updateLesson.isPending ? 'Saving…' : 'Save segment timings'}
+                              {savingTimingSegmentKey ===
+                              getTimingSegmentKey(item.localId, segment.localId)
+                                ? 'Saving…'
+                                : 'Save segment timings'}
                             </button>
                             {item.segments.length > 1 && (
                               <button
@@ -1027,10 +1226,10 @@ export default function LessonDetailPage() {
                           >
                             <span>
                               <span className="block text-xs font-medium text-slate-500">
-                                Word / Phrase Timings
+                                Logical Parts
                               </span>
                               <span className="text-[11px] text-slate-400">
-                                {segmentWordTimings.length} timings
+                                {segmentLogicalParts.length} parts with {segmentWordTimings.length} word timings
                               </span>
                             </span>
                             <span className="text-xs font-semibold text-slate-500">
@@ -1045,98 +1244,120 @@ export default function LessonDetailPage() {
                                 onClick={() => addWordTiming(item.localId, segment.localId)}
                                 className={smallSecondaryButtonClass}
                               >
-                                + Add word/phrase
+                                + Add word timing
                               </button>
                             </div>
                           ) : null}
 
-                          {isWordTimingOpen && segmentWordTimings.length ? (
+                          {isWordTimingOpen && segmentLogicalParts.length ? (
                             <div className="space-y-2">
-                              {segmentWordTimings.map((mark, markIndex) => (
+                              {segmentLogicalParts.map((logicalPart, logicalPartIndex) => (
                                 <div
-                                  key={mark.localId}
-                                  className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-[32px_minmax(180px,1fr)_110px_110px_auto]"
+                                  key={logicalPart.chunk.localId}
+                                  className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3"
                                 >
-                                  <span className="pt-2 text-xs font-medium text-slate-400">
-                                    #{markIndex + 1}
-                                  </span>
-                                  <input
-                                    value={mark.text}
-                                    onChange={(event) =>
-                                      updateItem(item.localId, (current) => ({
-                                        ...current,
-                                        wordTimings: current.wordTimings.map((entry) =>
-                                          entry.localId === mark.localId
-                                            ? {
-                                                ...entry,
-                                                segmentLocalId: segment.localId,
-                                                text: event.target.value,
-                                                normalizedText: normalizeTimingText(event.target.value),
-                                              }
-                                            : entry,
-                                        ),
-                                      }))
-                                    }
-                                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                    placeholder="Word / phrase"
-                                  />
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    value={mark.startMs}
-                                    onChange={(event) =>
-                                      updateItem(item.localId, (current) => ({
-                                        ...current,
-                                        wordTimings: current.wordTimings.map((entry) =>
-                                          entry.localId === mark.localId
-                                            ? {
-                                                ...entry,
-                                                segmentLocalId: segment.localId,
-                                                startMs: Number(event.target.value),
-                                              }
-                                            : entry,
-                                        ),
-                                      }))
-                                    }
-                                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                    aria-label="Word start ms"
-                                  />
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    value={mark.endMs}
-                                    onChange={(event) =>
-                                      updateItem(item.localId, (current) => ({
-                                        ...current,
-                                        wordTimings: current.wordTimings.map((entry) =>
-                                          entry.localId === mark.localId
-                                            ? {
-                                                ...entry,
-                                                segmentLocalId: segment.localId,
-                                                endMs: Number(event.target.value),
-                                              }
-                                            : entry,
-                                        ),
-                                      }))
-                                    }
-                                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                    aria-label="Word end ms"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => removeWordTiming(item.localId, mark.localId)}
-                                    className={smallDangerButtonClass}
-                                  >
-                                    Remove
-                                  </button>
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                      <p className="text-xs font-semibold text-slate-600">
+                                        Part {logicalPartIndex + 1}
+                                      </p>
+                                      <p className="text-sm text-slate-800">
+                                        {getChunkDisplayText(logicalPart.words)}
+                                      </p>
+                                    </div>
+                                    <span className="text-[11px] text-slate-400">
+                                      {getChunkDisplayRange(logicalPart.words)}
+                                    </span>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {logicalPart.words.map((mark, markIndex) => (
+                                      <div
+                                        key={mark.localId}
+                                        className="grid gap-2 rounded-md border border-slate-200 bg-white p-2 md:grid-cols-[32px_minmax(180px,1fr)_110px_110px_auto]"
+                                      >
+                                        <span className="pt-2 text-xs font-medium text-slate-400">
+                                          #{markIndex + 1}
+                                        </span>
+                                        <input
+                                          value={mark.text}
+                                          onChange={(event) =>
+                                            updateItem(item.localId, (current) => ({
+                                              ...current,
+                                              wordTimings: current.wordTimings.map((entry) =>
+                                                entry.localId === mark.localId
+                                                  ? {
+                                                      ...entry,
+                                                      segmentLocalId: segment.localId,
+                                                      text: event.target.value,
+                                                      normalizedText: normalizeTimingText(event.target.value),
+                                                    }
+                                                  : entry,
+                                              ),
+                                            }))
+                                          }
+                                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                          placeholder="Word"
+                                        />
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          value={mark.startMs}
+                                          onChange={(event) =>
+                                            updateItem(item.localId, (current) => ({
+                                              ...current,
+                                              wordTimings: current.wordTimings.map((entry) =>
+                                                entry.localId === mark.localId
+                                                  ? {
+                                                      ...entry,
+                                                      segmentLocalId: segment.localId,
+                                                      startMs: Number(event.target.value),
+                                                    }
+                                                  : entry,
+                                              ),
+                                            }))
+                                          }
+                                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                          aria-label="Word start ms"
+                                        />
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          value={mark.endMs}
+                                          onChange={(event) =>
+                                            updateItem(item.localId, (current) => ({
+                                              ...current,
+                                              wordTimings: current.wordTimings.map((entry) =>
+                                                entry.localId === mark.localId
+                                                  ? {
+                                                      ...entry,
+                                                      segmentLocalId: segment.localId,
+                                                      endMs: Number(event.target.value),
+                                                    }
+                                                  : entry,
+                                              ),
+                                            }))
+                                          }
+                                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                          aria-label="Word end ms"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => removeWordTiming(item.localId, mark.localId)}
+                                          className={smallDangerButtonClass}
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
                               ))}
                             </div>
                           ) : null}
 
-                          {isWordTimingOpen && !segmentWordTimings.length ? (
+                          {isWordTimingOpen && !segmentLogicalParts.length ? (
                             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
-                              Generate AI timings or add a word/phrase for this segment.
+                              Generate AI timings or add a word timing for this segment.
                             </div>
                           ) : null}
                         </div>
@@ -1218,7 +1439,7 @@ export default function LessonDetailPage() {
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <div className="grid gap-2 sm:grid-cols-2">
             <input
               value={vocabularyForm.englishText}
               onChange={(event) =>
@@ -1233,6 +1454,14 @@ export default function LessonDetailPage() {
                 setVocabularyForm((prev) => ({ ...prev, translation: event.target.value }))
               }
               placeholder="Armenian translation"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <input
+              value={vocabularyForm.focusText}
+              onChange={(event) =>
+                setVocabularyForm((prev) => ({ ...prev, focusText: event.target.value }))
+              }
+              placeholder="Pulse word"
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
             <button
@@ -1352,6 +1581,9 @@ export default function LessonDetailPage() {
                         </span>
                         <span className={translation ? 'truncate text-sm text-slate-700' : 'truncate text-sm text-rose-600'}>
                           {translation ?? 'Missing Armenian translation'}
+                        </span>
+                        <span className="truncate text-xs text-slate-500 sm:col-span-2">
+                          Pulse: {entry.focusText ?? entry.englishText}
                         </span>
                       </span>
                     </label>
@@ -1589,6 +1821,92 @@ function orderSentenceTimings<T extends EditableSentenceTiming>(timings: T[]): T
   return [...timings]
     .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs)
     .map((timing, index) => ({ ...timing, order: index }));
+}
+
+function orderChunkTimings<T extends EditableChunkTiming>(timings: T[]): T[] {
+  return [...timings]
+    .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs)
+    .map((timing, index) => ({ ...timing, order: index }));
+}
+
+function deriveChunkTimingFromWords(
+  chunk: EditableChunkTiming,
+  wordMarkIds: string[],
+  wordTimingsById: Map<string, EditableWordTiming>,
+): EditableChunkTiming {
+  const linkedWords = wordMarkIds
+    .map((wordMarkId) => wordTimingsById.get(wordMarkId))
+    .filter((mark): mark is EditableWordTiming => Boolean(mark))
+    .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
+  const text = linkedWords.map((word) => word.text.trim()).filter(Boolean).join(' ');
+  const startMs = linkedWords[0]?.startMs ?? chunk.startMs;
+  const endMs = linkedWords[linkedWords.length - 1]?.endMs ?? chunk.endMs;
+
+  return {
+    ...chunk,
+    text,
+    normalizedText: normalizeTimingText(text),
+    startMs,
+    endMs,
+    wordMarkIds: linkedWords.map((word) => word.id),
+  };
+}
+
+function getSegmentLogicalParts(
+  chunkTimings: EditableChunkTiming[],
+  segmentWordTimings: EditableWordTiming[],
+) {
+  const wordTimingsById = new Map(segmentWordTimings.map((mark) => [mark.id, mark]));
+  const linkedWordIds = new Set<string>();
+  const logicalParts = chunkTimings
+    .map((chunk) => {
+      const words = chunk.wordMarkIds
+        .map((wordMarkId) => wordTimingsById.get(wordMarkId))
+        .filter((mark): mark is EditableWordTiming => Boolean(mark))
+        .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
+      if (!words.length) {
+        return null;
+      }
+      words.forEach((word) => linkedWordIds.add(word.id));
+      return { chunk, words };
+    })
+    .filter(
+      (logicalPart): logicalPart is { chunk: EditableChunkTiming; words: EditableWordTiming[] } =>
+        Boolean(logicalPart),
+    );
+
+  const singleWordParts = segmentWordTimings
+    .filter((word) => !linkedWordIds.has(word.id))
+    .map((word) => ({
+      chunk: {
+        id: `single-${word.id}`,
+        localId: `single-${word.localId}`,
+        text: word.text,
+        normalizedText: word.normalizedText,
+        startMs: word.startMs,
+        endMs: word.endMs,
+        wordMarkIds: [word.id],
+        order: word.order,
+      },
+      words: [word],
+    }));
+
+  return [...logicalParts, ...singleWordParts].sort(
+    (left, right) =>
+      left.words[0].startMs - right.words[0].startMs ||
+      left.words[left.words.length - 1].endMs - right.words[right.words.length - 1].endMs,
+  );
+}
+
+function getChunkDisplayText(words: EditableWordTiming[]) {
+  return words.map((word) => word.text.trim()).filter(Boolean).join(' ') || 'Untitled part';
+}
+
+function getChunkDisplayRange(words: EditableWordTiming[]) {
+  if (!words.length) {
+    return '0-0 ms';
+  }
+  return `${words[0].startMs}-${words[words.length - 1].endMs} ms`;
 }
 
 function deriveSegmentSentenceTimings(

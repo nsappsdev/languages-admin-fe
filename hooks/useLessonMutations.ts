@@ -21,6 +21,7 @@ type UpdateLessonInput = {
       segments: LessonItem['segments'];
       wordTimings?: LessonItem['wordTimings'];
       sentenceTimings?: LessonItem['sentenceTimings'];
+      chunkTimings?: LessonItem['chunkTimings'];
     }>;
   };
 };
@@ -33,6 +34,7 @@ type CreateItemInput = {
   segments: LessonItem['segments'];
   wordTimings?: LessonItem['wordTimings'];
   sentenceTimings?: LessonItem['sentenceTimings'];
+  chunkTimings?: LessonItem['chunkTimings'];
 };
 
 type DeleteItemInput = { lessonId: string; itemId: string };
@@ -40,6 +42,14 @@ type DeleteLessonInput = { lessonId: string };
 type UploadLessonAudioInput = { file: File; lessonItemId?: string };
 type DeleteLessonAudioInput = { lessonItemId?: string; audioUrl: string };
 type GenerateLessonItemTimingsInput = { lessonId: string; itemId: string; text: string };
+type UpdateLessonSegmentTimingsInput = {
+  lessonId: string;
+  itemId: string;
+  segmentId: string;
+  segment: LessonItem['segments'][number];
+  wordTimings: LessonItem['wordTimings'];
+  chunkTimings: LessonItem['chunkTimings'];
+};
 
 export const useLessonMutations = () => {
   const { request } = useApiClient();
@@ -57,7 +67,7 @@ export const useLessonMutations = () => {
         body: JSON.stringify(data),
       }),
     onSuccess: (_data, variables) => {
-      invalidate(variables.lessonId);
+      queryClient.invalidateQueries({ queryKey: ['lessons'] });
     },
   });
 
@@ -85,6 +95,27 @@ export const useLessonMutations = () => {
   const deleteLesson = useMutation({
     mutationFn: ({ lessonId }: DeleteLessonInput) =>
       request<void>(`/lessons/${lessonId}`, { method: 'DELETE' }),
+    onSuccess: (_data, variables) => {
+      invalidate(variables.lessonId);
+    },
+  });
+
+  const updateLessonSegmentTimings = useMutation({
+    mutationFn: ({
+      lessonId,
+      itemId,
+      segmentId,
+      segment,
+      wordTimings,
+      chunkTimings,
+    }: UpdateLessonSegmentTimingsInput) =>
+      request<{ item: LessonItem }>(
+        `/lessons/${lessonId}/items/${itemId}/segments/${segmentId}/timings`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ segment, wordTimings, chunkTimings }),
+        },
+      ),
     onSuccess: (_data, variables) => {
       invalidate(variables.lessonId);
     },
@@ -128,6 +159,7 @@ export const useLessonMutations = () => {
     createItem,
     deleteItem,
     deleteLesson,
+    updateLessonSegmentTimings,
     uploadLessonAudio,
     deleteLessonAudio,
     generateLessonItemTimings,

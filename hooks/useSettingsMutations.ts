@@ -16,6 +16,7 @@ type UpdateSettingsInput = Partial<
     | 'translationFontMaxSize'
     | 'translationLetterSpacingMin'
     | 'translationLetterSpacingMax'
+    | 'wordRepetitionPauseMs'
     | 'updatePolicyEnabled'
     | 'latestAndroidBuildNumber'
     | 'minAndroidBuildNumber'

@@ -18,6 +18,7 @@ type LessonVocabularyInput = {
   sourceItemId?: string | null;
   order?: number;
   notes?: string | null;
+  focusText?: string | null;
   tags?: string[];
   translations?: Array<{
     languageCode: string;
