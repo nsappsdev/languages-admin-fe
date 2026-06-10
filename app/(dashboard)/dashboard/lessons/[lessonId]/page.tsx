@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useLesson } from '../../../../../hooks/useLesson';
 import { useLessonMutations } from '../../../../../hooks/useLessonMutations';
 import { useLessonVocabularyMutations } from '../../../../../hooks/useLessonVocabularyMutations';
@@ -11,7 +11,6 @@ import { ConfirmDialog } from '../../../../../components/ui/ConfirmDialog';
 import {
   GeneratedLessonTimings,
   LessonItem,
-  LessonItemChunkTiming,
   LessonItemSegment,
   LessonItemSentenceTiming,
   LessonItemWordTiming,
@@ -24,6 +23,14 @@ import {
   buildMissingTranslationsFilename,
 } from '../../../../../lib/lessonMissingTranslationsCsv';
 import { parseAndValidate } from '../../../../../lib/vocabularyCsv';
+import {
+  applyTimingDraft,
+  applyTimingRangeDrafts,
+  clearItemTimingDrafts,
+  clearSegmentTimingDrafts,
+  TimingField,
+} from '../../../../../lib/lessonTimingDraft';
+import { buildWordTimingSegmentIdMap } from '../../../../../lib/lessonTimingGrouping';
 
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
 
@@ -45,7 +52,6 @@ const vocabularyTabButtonClass =
 type EditableSegment = LessonItemSegment & { localId: string };
 type EditableWordTiming = LessonItemWordTiming & { localId: string; segmentLocalId?: string };
 type EditableSentenceTiming = LessonItemSentenceTiming & { localId: string };
-type EditableChunkTiming = LessonItemChunkTiming & { localId: string };
 type EditableItem = Omit<
   LessonItem,
   'segments' | 'wordTimings' | 'sentenceTimings' | 'chunkTimings'
@@ -54,7 +60,7 @@ type EditableItem = Omit<
   segments: EditableSegment[];
   wordTimings: EditableWordTiming[];
   sentenceTimings: EditableSentenceTiming[];
-  chunkTimings: EditableChunkTiming[];
+  chunkTimings: LessonItem['chunkTimings'];
 };
 
 type VocabularyPanelTab = 'missing' | 'all';
@@ -72,18 +78,16 @@ const toEditableSegment = (segment: LessonItemSegment): EditableSegment => ({
 const toEditableWordTiming = (
   mark: LessonItemWordTiming,
   segments: EditableSegment[],
+  segmentIdByWordId?: Map<string, string>,
 ): EditableWordTiming => ({
   ...mark,
   localId: mark.id,
-  segmentLocalId: findSegmentForTiming(segments, mark)?.localId,
+  segmentLocalId:
+    segmentIdByWordId?.get(mark.id) ??
+    findSegmentForTiming(segments, mark)?.localId,
 });
 
 const toEditableSentenceTiming = (mark: LessonItemSentenceTiming): EditableSentenceTiming => ({
-  ...mark,
-  localId: mark.id,
-});
-
-const toEditableChunkTiming = (mark: LessonItemChunkTiming): EditableChunkTiming => ({
   ...mark,
   localId: mark.id,
 });
@@ -123,15 +127,35 @@ const createSentenceTiming = (
 
 const toEditableItem = (item: LessonItem): EditableItem => {
   const segments = item.segments.map(toEditableSegment);
+  const segmentIdByWordId = buildWordTimingSegmentIdMap(
+    item.segments,
+    item.sentenceTimings ?? [],
+  );
   return {
     ...item,
     localId: item.id,
     segments,
-    wordTimings: (item.wordTimings ?? []).map((mark) => toEditableWordTiming(mark, segments)),
+    wordTimings: (item.wordTimings ?? []).map((mark) =>
+      toEditableWordTiming(mark, segments, segmentIdByWordId),
+    ),
     sentenceTimings: (item.sentenceTimings ?? []).map(toEditableSentenceTiming),
-    chunkTimings: (item.chunkTimings ?? []).map(toEditableChunkTiming),
+    chunkTimings: [],
   };
 };
+
+const cloneEditableItem = (item: EditableItem): EditableItem => ({
+  ...item,
+  segments: item.segments.map((segment) => ({ ...segment })),
+  wordTimings: item.wordTimings.map((mark) => ({ ...mark })),
+  sentenceTimings: item.sentenceTimings.map((mark) => ({
+    ...mark,
+    wordMarkIds: [...mark.wordMarkIds],
+  })),
+  chunkTimings: item.chunkTimings.map((mark) => ({
+    ...mark,
+    wordMarkIds: [...mark.wordMarkIds],
+  })),
+});
 
 export default function LessonDetailPage() {
   const params = useParams<{ lessonId: string }>();
@@ -156,6 +180,10 @@ export default function LessonDetailPage() {
   const [savingTimingSegmentKey, setSavingTimingSegmentKey] = useState<string | null>(null);
   const [timingWarningsByItemId, setTimingWarningsByItemId] = useState<Record<string, string[]>>({});
   const [openTimingSegments, setOpenTimingSegments] = useState<Record<string, true>>({});
+  const [timingDrafts, setTimingDrafts] = useState<Record<string, string>>({});
+  const committingTimingDraftKeyRef = useRef<string | null>(null);
+  const savingTimingSegmentIntentRef = useRef<string | null>(null);
+  const savedItemsRef = useRef<Record<string, EditableItem>>({});
   const [deleteAudioTarget, setDeleteAudioTarget] = useState<{
     itemLocalId: string;
     audioUrl: string;
@@ -172,10 +200,14 @@ export default function LessonDetailPage() {
 
   useEffect(() => {
     if (!lesson) return;
+    const editableItems = lesson.items.map(toEditableItem);
     setTitle(lesson.title);
     setDescription(lesson.description ?? '');
     setStatus(lesson.status);
-    setItems(lesson.items.map(toEditableItem));
+    setItems(editableItems);
+    savedItemsRef.current = Object.fromEntries(
+      editableItems.map((item) => [item.id, cloneEditableItem(item)]),
+    );
     setOpenTimingSegments({});
   }, [lesson]);
 
@@ -247,50 +279,13 @@ export default function LessonDetailPage() {
           order: markIndex,
         }),
       );
-      const wordTimingsById = new Map(wordTimings.map((mark) => [mark.id, mark]));
-      const linkedWordIds = new Set<string>();
-      const chunkTimings = orderChunkTimings(
-        [
-          ...(item.chunkTimings ?? [])
-            .map((mark) => {
-              const wordMarkIds = mark.wordMarkIds.filter((wordMarkId) =>
-                wordTimingsById.has(wordMarkId),
-              );
-              if (!wordMarkIds.length) {
-                return null;
-              }
-              wordMarkIds.forEach((wordMarkId) => linkedWordIds.add(wordMarkId));
-              return deriveChunkTimingFromWords(mark, wordMarkIds, wordTimingsById);
-            })
-            .filter((mark): mark is EditableChunkTiming => Boolean(mark)),
-          ...wordTimings
-            .filter((mark) => !linkedWordIds.has(mark.id))
-            .map((mark) =>
-              deriveChunkTimingFromWords(
-                {
-                  id: createLocalId(),
-                  localId: createLocalId(),
-                  text: mark.text,
-                  normalizedText: mark.normalizedText,
-                  startMs: mark.startMs,
-                  endMs: mark.endMs,
-                  wordMarkIds: [mark.id],
-                  order: mark.order,
-                },
-                [mark.id],
-                wordTimingsById,
-              ),
-            ),
-        ],
-      );
-
       return {
         ...item,
         order: index,
         segments,
         wordTimings,
         sentenceTimings: deriveSegmentSentenceTimings(segments, wordTimings),
-        chunkTimings,
+        chunkTimings: [],
       };
     });
 
@@ -339,14 +334,6 @@ export default function LessonDetailPage() {
             Number.isNaN(mark.startMs) ||
             Number.isNaN(mark.endMs) ||
             mark.endMs <= mark.startMs,
-        ) ||
-        item.chunkTimings.some(
-          (mark) =>
-            mark.text.trim().length < 1 ||
-            Number.isNaN(mark.startMs) ||
-            Number.isNaN(mark.endMs) ||
-            mark.endMs <= mark.startMs ||
-            mark.wordMarkIds.length < 1,
         ),
     );
 
@@ -391,21 +378,17 @@ export default function LessonDetailPage() {
                 order,
               }),
             ),
-            chunkTimings: item.chunkTimings.map(
-              ({ id, text, normalizedText, startMs, endMs, wordMarkIds, order }) => ({
-                id,
-                text,
-                normalizedText,
-                startMs,
-                endMs,
-                wordMarkIds,
-                order,
-              }),
-            ),
+            chunkTimings: [],
           })),
         },
       });
-      setItems((prev) => normalizeItems(prev));
+      setItems((prev) => {
+        const normalized = normalizeItems(prev);
+        savedItemsRef.current = Object.fromEntries(
+          normalized.map((item) => [item.id, cloneEditableItem(item)]),
+        );
+        return normalized;
+      });
       setItemsFeedback('Items saved');
       if (!silent) {
         notify('Lesson items updated');
@@ -425,7 +408,12 @@ export default function LessonDetailPage() {
     }
 
     const key = getTimingSegmentKey(item.localId, segment.localId);
-    const normalizedItem = normalizeItems([item])[0];
+    const drafted = applySegmentTimingDrafts(item, segment, timingDrafts);
+    if (!drafted.item || !drafted.segment) {
+      setItemsFeedback(drafted.error ?? 'Invalid sentence timing.');
+      return false;
+    }
+    const normalizedItem = normalizeItems([drafted.item])[0];
     const normalizedSegment = normalizedItem.segments.find((entry) => entry.id === segment.id);
     if (!normalizedSegment) {
       setItemsFeedback('Could not find the segment to save.');
@@ -437,11 +425,6 @@ export default function LessonDetailPage() {
       normalizedSegment,
       normalizedItem.segments,
     );
-    const segmentWordTimingIds = new Set(segmentWordTimings.map((mark) => mark.id));
-    const segmentChunkTimings = normalizedItem.chunkTimings.filter((chunk) =>
-      chunk.wordMarkIds.some((wordMarkId) => segmentWordTimingIds.has(wordMarkId)),
-    );
-
     setItemsFeedback('Saving segment timings…');
     setSavingTimingSegmentKey(key);
     try {
@@ -465,22 +448,17 @@ export default function LessonDetailPage() {
             order,
           }),
         ),
-        chunkTimings: segmentChunkTimings.map(
-          ({ id, text, normalizedText, startMs, endMs, wordMarkIds, order }) => ({
-            id,
-            text,
-            normalizedText,
-            startMs,
-            endMs,
-            wordMarkIds,
-            order,
-          }),
-        ),
+        chunkTimings: [],
       });
+      const savedItem = toEditableItem(response.item);
+      savedItemsRef.current[response.item.id] = cloneEditableItem(savedItem);
       setItems((current) =>
         current.map((entry) =>
-          entry.id === response.item.id ? toEditableItem(response.item) : entry,
+          entry.id === response.item.id ? savedItem : entry,
         ),
+      );
+      setTimingDrafts((current) =>
+        clearSegmentTimingDrafts(current, item.localId, segment.localId),
       );
       setItemsFeedback('Segment timings saved');
       notify('Segment timings saved');
@@ -493,6 +471,157 @@ export default function LessonDetailPage() {
     } finally {
       setSavingTimingSegmentKey((current) => (current === key ? null : current));
     }
+  };
+
+  const setTimingDraft = (key: string, value: string) => {
+    setTimingDrafts((current) => ({ ...current, [key]: value }));
+  };
+
+  const clearTimingDraft = (key: string) => {
+    setTimingDrafts((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const handleTimingDraftBlur = (key: string, timingSegmentKey: string) => {
+    if (
+      committingTimingDraftKeyRef.current !== key &&
+      savingTimingSegmentIntentRef.current !== timingSegmentKey
+    ) {
+      clearTimingDraft(key);
+    }
+  };
+
+  const rollbackSegmentTimings = (item: EditableItem, segment: EditableSegment) => {
+    const savedItem = savedItemsRef.current[item.id];
+    const savedSegment = savedItem?.segments.find((entry) => entry.id === segment.id);
+    if (!savedItem || !savedSegment) {
+      setItemsFeedback('No saved timing version is available for this sentence.');
+      return;
+    }
+
+    const savedWordTimings = getSegmentWordTimings(
+      savedItem.wordTimings,
+      savedSegment,
+      savedItem.segments,
+    ).map((mark) => ({
+      ...mark,
+      segmentLocalId: segment.localId,
+    }));
+    const currentWordTimingIds = new Set(
+      getSegmentWordTimings(item.wordTimings, segment, item.segments).map(
+        (mark) => mark.localId,
+      ),
+    );
+
+    updateItem(item.localId, (current) => {
+      const nextSegments = current.segments.map((entry) =>
+        entry.localId === segment.localId
+          ? { ...savedSegment, localId: segment.localId }
+          : entry,
+      );
+      const nextWordTimings = [
+        ...current.wordTimings.filter(
+          (mark) =>
+            mark.segmentLocalId !== segment.localId &&
+            !currentWordTimingIds.has(mark.localId),
+        ),
+        ...savedWordTimings,
+      ];
+
+      return {
+        ...current,
+        segments: nextSegments,
+        wordTimings: orderWordTimingsBySegment(nextSegments, nextWordTimings),
+        sentenceTimings: deriveSegmentSentenceTimings(nextSegments, nextWordTimings),
+        chunkTimings: [],
+      };
+    });
+    setTimingDrafts((current) =>
+      clearSegmentTimingDrafts(current, item.localId, segment.localId),
+    );
+    setItemsFeedback('Unsaved sentence timing changes rolled back.');
+  };
+
+  const commitSegmentTimingDraft = async ({
+    draftKey,
+    field,
+    item,
+    rawValue,
+    segment,
+  }: {
+    draftKey: string;
+    field: TimingField;
+    item: EditableItem;
+    rawValue: string;
+    segment: EditableSegment;
+  }) => {
+    const result = applyTimingDraft({ field, range: segment, rawValue });
+    if (!result.range) {
+      setItemsFeedback(result.error ?? 'Invalid sentence timing.');
+      return;
+    }
+
+    const nextSegment = { ...segment, ...result.range };
+    const nextItem = {
+      ...item,
+      segments: item.segments.map((entry) =>
+        entry.localId === segment.localId ? nextSegment : entry,
+      ),
+      chunkTimings: [],
+    };
+    committingTimingDraftKeyRef.current = draftKey;
+    const saved = await saveSegmentTimings(nextItem, nextSegment);
+    if (saved) {
+      clearTimingDraft(draftKey);
+    }
+    committingTimingDraftKeyRef.current = null;
+  };
+
+  const commitWordTimingDraft = async ({
+    draftKey,
+    field,
+    item,
+    mark,
+    rawValue,
+    segment,
+  }: {
+    draftKey: string;
+    field: TimingField;
+    item: EditableItem;
+    mark: EditableWordTiming;
+    rawValue: string;
+    segment: EditableSegment;
+  }) => {
+    const result = applyTimingDraft({
+      bounds: segment,
+      field,
+      range: mark,
+      rawValue,
+    });
+    if (!result.range) {
+      setItemsFeedback(result.error ?? 'Invalid word timing.');
+      return;
+    }
+
+    const nextItem = {
+      ...item,
+      wordTimings: item.wordTimings.map((entry) =>
+        entry.localId === mark.localId
+          ? { ...entry, ...result.range, segmentLocalId: segment.localId }
+          : entry,
+      ),
+      chunkTimings: [],
+    };
+    committingTimingDraftKeyRef.current = draftKey;
+    const saved = await saveSegmentTimings(nextItem, segment);
+    if (saved) {
+      clearTimingDraft(draftKey);
+    }
+    committingTimingDraftKeyRef.current = null;
   };
 
   const handleSaveAll = async (event: FormEvent<HTMLFormElement>) => {
@@ -569,23 +698,7 @@ export default function LessonDetailPage() {
             return segment ? !isTimingInsideSegment(mark, segment) : true;
           }),
         ),
-        chunkTimings: orderChunkTimings(
-          item.chunkTimings
-            .map((chunk) => ({
-              ...chunk,
-              wordMarkIds: chunk.wordMarkIds.filter((wordMarkId) =>
-                item.wordTimings.some((mark) => {
-                  if (mark.id !== wordMarkId) return false;
-                  if (mark.segmentLocalId) {
-                    return mark.segmentLocalId !== segmentLocalId;
-                  }
-                  const segment = item.segments.find((entry) => entry.localId === segmentLocalId);
-                  return segment ? !isTimingInsideSegment(mark, segment) : true;
-                }),
-              ),
-            }))
-            .filter((chunk) => chunk.wordMarkIds.length > 0),
-        ),
+        chunkTimings: [],
       };
     });
   };
@@ -604,24 +717,13 @@ export default function LessonDetailPage() {
       const endMs = Math.max(startMs + 1, Math.min(startMs + 250, segment.endMs));
 
       const wordTiming = createWordTiming('', startMs, endMs, item.wordTimings.length, segmentLocalId);
-      const chunkTiming: EditableChunkTiming = {
-        id: createLocalId(),
-        localId: createLocalId(),
-        text: wordTiming.text,
-        normalizedText: wordTiming.normalizedText,
-        startMs: wordTiming.startMs,
-        endMs: wordTiming.endMs,
-        wordMarkIds: [wordTiming.id],
-        order: item.chunkTimings.length,
-      };
-
       return {
         ...item,
         wordTimings: orderWordTimingsBySegment(item.segments, [
           ...item.wordTimings,
           wordTiming,
         ]),
-        chunkTimings: orderChunkTimings([...item.chunkTimings, chunkTiming]),
+        chunkTimings: [],
       };
     });
   };
@@ -643,16 +745,7 @@ export default function LessonDetailPage() {
             ? sentence.wordMarkIds.filter((wordMarkId) => wordMarkId !== removed.id)
             : sentence.wordMarkIds,
         })),
-        chunkTimings: orderChunkTimings(
-          item.chunkTimings
-            .map((chunk) => ({
-              ...chunk,
-              wordMarkIds: removed
-                ? chunk.wordMarkIds.filter((wordMarkId) => wordMarkId !== removed.id)
-                : chunk.wordMarkIds,
-            }))
-            .filter((chunk) => chunk.wordMarkIds.length > 0),
-        ),
+        chunkTimings: [],
       };
     });
   };
@@ -708,12 +801,19 @@ export default function LessonDetailPage() {
 
   const applyGeneratedTimings = (itemLocalId: string, timings: GeneratedLessonTimings) => {
     const segments = timings.segments.map(toEditableSegment);
+    const segmentIdByWordId = buildWordTimingSegmentIdMap(
+      timings.segments,
+      timings.sentenceTimings,
+    );
+    setTimingDrafts((current) => clearItemTimingDrafts(current, itemLocalId));
     updateItem(itemLocalId, (current) => ({
       ...current,
       segments,
-      wordTimings: timings.wordTimings.map((mark) => toEditableWordTiming(mark, segments)),
+      wordTimings: timings.wordTimings.map((mark) =>
+        toEditableWordTiming(mark, segments, segmentIdByWordId),
+      ),
       sentenceTimings: timings.sentenceTimings.map(toEditableSentenceTiming),
-      chunkTimings: timings.chunkTimings.map(toEditableChunkTiming),
+      chunkTimings: [],
     }));
   };
 
@@ -737,9 +837,8 @@ export default function LessonDetailPage() {
       const warningSuffix = response.timings.warnings.length
         ? ` with ${response.timings.warnings.length} warning(s)`
         : '';
-      const chunkSuffix = ` (${response.timings.chunkTimings.length} logical parts)`;
-      setItemsFeedback(`AI timings generated${chunkSuffix}${warningSuffix}. Review and save items.`);
-      notify(`AI timings generated${chunkSuffix}${warningSuffix}`);
+      setItemsFeedback(`AI timings generated${warningSuffix}. Review and save items.`);
+      notify(`AI timings generated${warningSuffix}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to generate AI timings';
       setItemsFeedback(message);
@@ -1099,8 +1198,8 @@ export default function LessonDetailPage() {
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="block text-xs font-medium text-slate-500">AI Segments</label>
-                <span className="text-xs text-slate-500">{item.segments.length} segments</span>
+                <label className="block text-xs font-medium text-slate-500">Sentences</label>
+                <span className="text-xs text-slate-500">{item.segments.length} sentences</span>
               </div>
 
               {item.segments.length ? (
@@ -1111,12 +1210,49 @@ export default function LessonDetailPage() {
                       segment,
                       item.segments,
                     );
-                    const segmentLogicalParts = getSegmentLogicalParts(
-                      item.chunkTimings,
-                      segmentWordTimings,
+                    const timingSegmentKey = getTimingSegmentKey(
+                      item.localId,
+                      segment.localId,
+                    );
+                    const isSavingSegment = savingTimingSegmentKey === timingSegmentKey;
+                    const hasTimingDraft = Object.keys(timingDrafts).some((key) =>
+                      key.startsWith(`${timingSegmentKey}:`),
+                    );
+                    const savedItem = savedItemsRef.current[item.id];
+                    const savedSegment = savedItem?.segments.find(
+                      (entry) => entry.id === segment.id,
+                    );
+                    const savedSegmentWordTimings =
+                      savedItem && savedSegment
+                        ? getSegmentWordTimings(
+                            savedItem.wordTimings,
+                            savedSegment,
+                            savedItem.segments,
+                          )
+                        : [];
+                    const hasUnsavedTimingChanges =
+                      hasTimingDraft ||
+                      !savedSegment ||
+                      !areSegmentTimingsEqual(
+                        segment,
+                        segmentWordTimings,
+                        savedSegment,
+                        savedSegmentWordTimings,
+                      );
+                    const segmentStartDraftKey = getTimingDraftKey(
+                      item.localId,
+                      segment.localId,
+                      segment.localId,
+                      'startMs',
+                    );
+                    const segmentEndDraftKey = getTimingDraftKey(
+                      item.localId,
+                      segment.localId,
+                      segment.localId,
+                      'endMs',
                     );
                     const isWordTimingOpen = Boolean(
-                      openTimingSegments[getTimingSegmentKey(item.localId, segment.localId)],
+                      openTimingSegments[timingSegmentKey],
                     );
 
                     return (
@@ -1126,28 +1262,42 @@ export default function LessonDetailPage() {
                       >
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <p className="text-xs font-medium text-slate-500">Segment {segmentIndex + 1}</p>
+                            <p className="text-xs font-medium text-slate-500">Sentence {segmentIndex + 1}</p>
                             <p className="text-[11px] text-slate-400">
-                              {segmentLogicalParts.length} logical parts, {segmentWordTimings.length} word timings
+                              {segmentWordTimings.length} word timings
                             </p>
                           </div>
                           <div className="flex flex-wrap justify-end gap-2">
                             <button
                               type="button"
+                              onPointerDown={() => {
+                                savingTimingSegmentIntentRef.current = timingSegmentKey;
+                              }}
+                              onPointerUp={() => {
+                                savingTimingSegmentIntentRef.current = null;
+                              }}
+                              onPointerCancel={() => {
+                                savingTimingSegmentIntentRef.current = null;
+                              }}
                               onClick={() => {
+                                savingTimingSegmentIntentRef.current = null;
                                 void saveSegmentTimings(item, segment);
                               }}
                               disabled={
                                 updateLessonSegmentTimings.isPending ||
-                                savingTimingSegmentKey ===
-                                  getTimingSegmentKey(item.localId, segment.localId)
+                                isSavingSegment
                               }
                               className={smallSecondaryButtonClass}
                             >
-                              {savingTimingSegmentKey ===
-                              getTimingSegmentKey(item.localId, segment.localId)
-                                ? 'Saving…'
-                                : 'Save segment timings'}
+                              {isSavingSegment ? 'Saving…' : 'Save segment timings'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => rollbackSegmentTimings(item, segment)}
+                              disabled={isSavingSegment || !hasUnsavedTimingChanges || !savedSegment}
+                              className={smallNeutralButtonClass}
+                            >
+                              Roll back changes
                             </button>
                             {item.segments.length > 1 && (
                               <button
@@ -1182,17 +1332,25 @@ export default function LessonDetailPage() {
                             <input
                               type="number"
                               min={0}
-                              value={segment.startMs}
-                              onChange={(e) =>
-                                updateItem(item.localId, (current) => ({
-                                  ...current,
-                                  segments: current.segments.map((entry) =>
-                                    entry.localId === segment.localId
-                                      ? { ...entry, startMs: Number(e.target.value) }
-                                      : entry,
-                                  ),
-                                }))
+                              value={timingDrafts[segmentStartDraftKey] ?? String(segment.startMs)}
+                              onChange={(event) =>
+                                setTimingDraft(segmentStartDraftKey, event.target.value)
                               }
+                              onBlur={() =>
+                                handleTimingDraftBlur(segmentStartDraftKey, timingSegmentKey)
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key !== 'Enter') return;
+                                event.preventDefault();
+                                void commitSegmentTimingDraft({
+                                  draftKey: segmentStartDraftKey,
+                                  field: 'startMs',
+                                  item,
+                                  rawValue: event.currentTarget.value,
+                                  segment,
+                                });
+                              }}
+                              disabled={isSavingSegment}
                               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                             />
                           </div>
@@ -1201,17 +1359,25 @@ export default function LessonDetailPage() {
                             <input
                               type="number"
                               min={1}
-                              value={segment.endMs}
-                              onChange={(e) =>
-                                updateItem(item.localId, (current) => ({
-                                  ...current,
-                                  segments: current.segments.map((entry) =>
-                                    entry.localId === segment.localId
-                                      ? { ...entry, endMs: Number(e.target.value) }
-                                      : entry,
-                                  ),
-                                }))
+                              value={timingDrafts[segmentEndDraftKey] ?? String(segment.endMs)}
+                              onChange={(event) =>
+                                setTimingDraft(segmentEndDraftKey, event.target.value)
                               }
+                              onBlur={() =>
+                                handleTimingDraftBlur(segmentEndDraftKey, timingSegmentKey)
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key !== 'Enter') return;
+                                event.preventDefault();
+                                void commitSegmentTimingDraft({
+                                  draftKey: segmentEndDraftKey,
+                                  field: 'endMs',
+                                  item,
+                                  rawValue: event.currentTarget.value,
+                                  segment,
+                                });
+                              }}
+                              disabled={isSavingSegment}
                               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                             />
                           </div>
@@ -1226,10 +1392,10 @@ export default function LessonDetailPage() {
                           >
                             <span>
                               <span className="block text-xs font-medium text-slate-500">
-                                Logical Parts
+                                Words
                               </span>
                               <span className="text-[11px] text-slate-400">
-                                {segmentLogicalParts.length} parts with {segmentWordTimings.length} word timings
+                                {segmentWordTimings.length} word timings
                               </span>
                             </span>
                             <span className="text-xs font-semibold text-slate-500">
@@ -1242,6 +1408,7 @@ export default function LessonDetailPage() {
                               <button
                                 type="button"
                                 onClick={() => addWordTiming(item.localId, segment.localId)}
+                                disabled={isSavingSegment}
                                 className={smallSecondaryButtonClass}
                               >
                                 + Add word timing
@@ -1249,113 +1416,118 @@ export default function LessonDetailPage() {
                             </div>
                           ) : null}
 
-                          {isWordTimingOpen && segmentLogicalParts.length ? (
+                          {isWordTimingOpen && segmentWordTimings.length ? (
                             <div className="space-y-2">
-                              {segmentLogicalParts.map((logicalPart, logicalPartIndex) => (
-                                <div
-                                  key={logicalPart.chunk.localId}
-                                  className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3"
-                                >
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <div>
-                                      <p className="text-xs font-semibold text-slate-600">
-                                        Part {logicalPartIndex + 1}
-                                      </p>
-                                      <p className="text-sm text-slate-800">
-                                        {getChunkDisplayText(logicalPart.words)}
-                                      </p>
-                                    </div>
-                                    <span className="text-[11px] text-slate-400">
-                                      {getChunkDisplayRange(logicalPart.words)}
+                              {segmentWordTimings.map((mark, markIndex) => {
+                                const startDraftKey = getTimingDraftKey(
+                                  item.localId,
+                                  segment.localId,
+                                  mark.localId,
+                                  'startMs',
+                                );
+                                const endDraftKey = getTimingDraftKey(
+                                  item.localId,
+                                  segment.localId,
+                                  mark.localId,
+                                  'endMs',
+                                );
+                                return (
+                                  <div
+                                    key={mark.localId}
+                                    className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 md:grid-cols-[32px_minmax(180px,1fr)_110px_110px_auto]"
+                                  >
+                                    <span className="pt-2 text-xs font-medium text-slate-400">
+                                      #{markIndex + 1}
                                     </span>
+                                    <input
+                                      value={mark.text}
+                                      onChange={(event) =>
+                                        updateItem(item.localId, (current) => ({
+                                          ...current,
+                                          chunkTimings: [],
+                                          wordTimings: current.wordTimings.map((entry) =>
+                                            entry.localId === mark.localId
+                                              ? {
+                                                  ...entry,
+                                                  segmentLocalId: segment.localId,
+                                                  text: event.target.value,
+                                                  normalizedText: normalizeTimingText(event.target.value),
+                                                }
+                                              : entry,
+                                          ),
+                                        }))
+                                      }
+                                      disabled={isSavingSegment}
+                                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                      placeholder="Word"
+                                    />
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={timingDrafts[startDraftKey] ?? String(mark.startMs)}
+                                      onChange={(event) =>
+                                        setTimingDraft(startDraftKey, event.target.value)
+                                      }
+                                      onBlur={() =>
+                                        handleTimingDraftBlur(startDraftKey, timingSegmentKey)
+                                      }
+                                      onKeyDown={(event) => {
+                                        if (event.key !== 'Enter') return;
+                                        event.preventDefault();
+                                        void commitWordTimingDraft({
+                                          draftKey: startDraftKey,
+                                          field: 'startMs',
+                                          item,
+                                          mark,
+                                          rawValue: event.currentTarget.value,
+                                          segment,
+                                        });
+                                      }}
+                                      disabled={isSavingSegment}
+                                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                      aria-label="Word start ms"
+                                    />
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={timingDrafts[endDraftKey] ?? String(mark.endMs)}
+                                      onChange={(event) =>
+                                        setTimingDraft(endDraftKey, event.target.value)
+                                      }
+                                      onBlur={() =>
+                                        handleTimingDraftBlur(endDraftKey, timingSegmentKey)
+                                      }
+                                      onKeyDown={(event) => {
+                                        if (event.key !== 'Enter') return;
+                                        event.preventDefault();
+                                        void commitWordTimingDraft({
+                                          draftKey: endDraftKey,
+                                          field: 'endMs',
+                                          item,
+                                          mark,
+                                          rawValue: event.currentTarget.value,
+                                          segment,
+                                        });
+                                      }}
+                                      disabled={isSavingSegment}
+                                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                      aria-label="Word end ms"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removeWordTiming(item.localId, mark.localId)}
+                                      disabled={isSavingSegment}
+                                      className={smallDangerButtonClass}
+                                    >
+                                      Remove
+                                    </button>
                                   </div>
-                                  <div className="space-y-2">
-                                    {logicalPart.words.map((mark, markIndex) => (
-                                      <div
-                                        key={mark.localId}
-                                        className="grid gap-2 rounded-md border border-slate-200 bg-white p-2 md:grid-cols-[32px_minmax(180px,1fr)_110px_110px_auto]"
-                                      >
-                                        <span className="pt-2 text-xs font-medium text-slate-400">
-                                          #{markIndex + 1}
-                                        </span>
-                                        <input
-                                          value={mark.text}
-                                          onChange={(event) =>
-                                            updateItem(item.localId, (current) => ({
-                                              ...current,
-                                              wordTimings: current.wordTimings.map((entry) =>
-                                                entry.localId === mark.localId
-                                                  ? {
-                                                      ...entry,
-                                                      segmentLocalId: segment.localId,
-                                                      text: event.target.value,
-                                                      normalizedText: normalizeTimingText(event.target.value),
-                                                    }
-                                                  : entry,
-                                              ),
-                                            }))
-                                          }
-                                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                          placeholder="Word"
-                                        />
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          value={mark.startMs}
-                                          onChange={(event) =>
-                                            updateItem(item.localId, (current) => ({
-                                              ...current,
-                                              wordTimings: current.wordTimings.map((entry) =>
-                                                entry.localId === mark.localId
-                                                  ? {
-                                                      ...entry,
-                                                      segmentLocalId: segment.localId,
-                                                      startMs: Number(event.target.value),
-                                                    }
-                                                  : entry,
-                                              ),
-                                            }))
-                                          }
-                                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                          aria-label="Word start ms"
-                                        />
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={mark.endMs}
-                                          onChange={(event) =>
-                                            updateItem(item.localId, (current) => ({
-                                              ...current,
-                                              wordTimings: current.wordTimings.map((entry) =>
-                                                entry.localId === mark.localId
-                                                  ? {
-                                                      ...entry,
-                                                      segmentLocalId: segment.localId,
-                                                      endMs: Number(event.target.value),
-                                                    }
-                                                  : entry,
-                                              ),
-                                            }))
-                                          }
-                                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                                          aria-label="Word end ms"
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() => removeWordTiming(item.localId, mark.localId)}
-                                          className={smallDangerButtonClass}
-                                        >
-                                          Remove
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           ) : null}
 
-                          {isWordTimingOpen && !segmentLogicalParts.length ? (
+                          {isWordTimingOpen && !segmentWordTimings.length ? (
                             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
                               Generate AI timings or add a word timing for this segment.
                             </div>
@@ -1772,6 +1944,99 @@ function getTimingSegmentKey(itemLocalId: string, segmentLocalId: string) {
   return `${itemLocalId}:${segmentLocalId}`;
 }
 
+function getTimingDraftKey(
+  itemLocalId: string,
+  segmentLocalId: string,
+  timingLocalId: string,
+  field: TimingField,
+) {
+  return `${itemLocalId}:${segmentLocalId}:${timingLocalId}:${field}`;
+}
+
+function applySegmentTimingDrafts(
+  item: EditableItem,
+  segment: EditableSegment,
+  drafts: Record<string, string>,
+): { error?: string; item?: EditableItem; segment?: EditableSegment } {
+  const segmentRange = applyTimingRangeDrafts({
+    range: segment,
+    startRawValue:
+      drafts[getTimingDraftKey(item.localId, segment.localId, segment.localId, 'startMs')],
+    endRawValue:
+      drafts[getTimingDraftKey(item.localId, segment.localId, segment.localId, 'endMs')],
+  });
+  if (!segmentRange.range) {
+    return { error: segmentRange.error };
+  }
+
+  const nextSegment = { ...segment, ...segmentRange.range };
+  const segmentWordTimings = getSegmentWordTimings(
+    item.wordTimings,
+    segment,
+    item.segments,
+  );
+  const nextWordTimings = new Map<string, EditableWordTiming>();
+  for (const mark of segmentWordTimings) {
+    const wordRange = applyTimingRangeDrafts({
+      bounds: nextSegment,
+      range: mark,
+      startRawValue:
+        drafts[getTimingDraftKey(item.localId, segment.localId, mark.localId, 'startMs')],
+      endRawValue:
+        drafts[getTimingDraftKey(item.localId, segment.localId, mark.localId, 'endMs')],
+    });
+    if (!wordRange.range) {
+      return { error: wordRange.error };
+    }
+    nextWordTimings.set(mark.localId, { ...mark, ...wordRange.range });
+  }
+
+  const nextSegments = item.segments.map((entry) =>
+    entry.localId === segment.localId ? nextSegment : entry,
+  );
+  const wordTimings = item.wordTimings.map(
+    (mark) => nextWordTimings.get(mark.localId) ?? mark,
+  );
+  return {
+    item: {
+      ...item,
+      segments: nextSegments,
+      wordTimings,
+      sentenceTimings: deriveSegmentSentenceTimings(nextSegments, wordTimings),
+      chunkTimings: [],
+    },
+    segment: nextSegment,
+  };
+}
+
+function areSegmentTimingsEqual(
+  leftSegment: EditableSegment,
+  leftWordTimings: EditableWordTiming[],
+  rightSegment: EditableSegment,
+  rightWordTimings: EditableWordTiming[],
+) {
+  if (
+    leftSegment.text !== rightSegment.text ||
+    leftSegment.startMs !== rightSegment.startMs ||
+    leftSegment.endMs !== rightSegment.endMs ||
+    leftWordTimings.length !== rightWordTimings.length
+  ) {
+    return false;
+  }
+
+  return leftWordTimings.every((left, index) => {
+    const right = rightWordTimings[index];
+    return (
+      right &&
+      left.id === right.id &&
+      left.text === right.text &&
+      left.normalizedText === right.normalizedText &&
+      left.startMs === right.startMs &&
+      left.endMs === right.endMs
+    );
+  });
+}
+
 function findSegmentForTiming(
   segments: EditableSegment[],
   mark: { startMs: number; endMs: number },
@@ -1786,7 +2051,7 @@ function getWordTimingSegmentLocalId(
   if (mark.segmentLocalId && segments.some((segment) => segment.localId === mark.segmentLocalId)) {
     return mark.segmentLocalId;
   }
-  return findSegmentForTiming(segments, mark)?.localId ?? segments[0]?.localId;
+  return findSegmentForTiming(segments, mark)?.localId;
 }
 
 function getSegmentWordTimings(
@@ -1821,92 +2086,6 @@ function orderSentenceTimings<T extends EditableSentenceTiming>(timings: T[]): T
   return [...timings]
     .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs)
     .map((timing, index) => ({ ...timing, order: index }));
-}
-
-function orderChunkTimings<T extends EditableChunkTiming>(timings: T[]): T[] {
-  return [...timings]
-    .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs)
-    .map((timing, index) => ({ ...timing, order: index }));
-}
-
-function deriveChunkTimingFromWords(
-  chunk: EditableChunkTiming,
-  wordMarkIds: string[],
-  wordTimingsById: Map<string, EditableWordTiming>,
-): EditableChunkTiming {
-  const linkedWords = wordMarkIds
-    .map((wordMarkId) => wordTimingsById.get(wordMarkId))
-    .filter((mark): mark is EditableWordTiming => Boolean(mark))
-    .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
-  const text = linkedWords.map((word) => word.text.trim()).filter(Boolean).join(' ');
-  const startMs = linkedWords[0]?.startMs ?? chunk.startMs;
-  const endMs = linkedWords[linkedWords.length - 1]?.endMs ?? chunk.endMs;
-
-  return {
-    ...chunk,
-    text,
-    normalizedText: normalizeTimingText(text),
-    startMs,
-    endMs,
-    wordMarkIds: linkedWords.map((word) => word.id),
-  };
-}
-
-function getSegmentLogicalParts(
-  chunkTimings: EditableChunkTiming[],
-  segmentWordTimings: EditableWordTiming[],
-) {
-  const wordTimingsById = new Map(segmentWordTimings.map((mark) => [mark.id, mark]));
-  const linkedWordIds = new Set<string>();
-  const logicalParts = chunkTimings
-    .map((chunk) => {
-      const words = chunk.wordMarkIds
-        .map((wordMarkId) => wordTimingsById.get(wordMarkId))
-        .filter((mark): mark is EditableWordTiming => Boolean(mark))
-        .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
-      if (!words.length) {
-        return null;
-      }
-      words.forEach((word) => linkedWordIds.add(word.id));
-      return { chunk, words };
-    })
-    .filter(
-      (logicalPart): logicalPart is { chunk: EditableChunkTiming; words: EditableWordTiming[] } =>
-        Boolean(logicalPart),
-    );
-
-  const singleWordParts = segmentWordTimings
-    .filter((word) => !linkedWordIds.has(word.id))
-    .map((word) => ({
-      chunk: {
-        id: `single-${word.id}`,
-        localId: `single-${word.localId}`,
-        text: word.text,
-        normalizedText: word.normalizedText,
-        startMs: word.startMs,
-        endMs: word.endMs,
-        wordMarkIds: [word.id],
-        order: word.order,
-      },
-      words: [word],
-    }));
-
-  return [...logicalParts, ...singleWordParts].sort(
-    (left, right) =>
-      left.words[0].startMs - right.words[0].startMs ||
-      left.words[left.words.length - 1].endMs - right.words[right.words.length - 1].endMs,
-  );
-}
-
-function getChunkDisplayText(words: EditableWordTiming[]) {
-  return words.map((word) => word.text.trim()).filter(Boolean).join(' ') || 'Untitled part';
-}
-
-function getChunkDisplayRange(words: EditableWordTiming[]) {
-  if (!words.length) {
-    return '0-0 ms';
-  }
-  return `${words[0].startMs}-${words[words.length - 1].endMs} ms`;
 }
 
 function deriveSegmentSentenceTimings(
