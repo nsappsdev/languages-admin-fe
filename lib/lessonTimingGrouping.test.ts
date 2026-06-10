@@ -1,4 +1,27 @@
-import { buildWordTimingSegmentIdMap } from './lessonTimingGrouping';
+import {
+  buildWordTimingSegmentIdMap,
+  retainOpenTimingSegments,
+} from './lessonTimingGrouping';
+
+describe('retainOpenTimingSegments', () => {
+  it('keeps an expanded sentence open after saved lesson data is refreshed', () => {
+    const current = {
+      'item-1:sentence-1': true,
+      'item-1:removed-sentence': true,
+    } as const;
+
+    expect(
+      retainOpenTimingSegments(current, [
+        {
+          localId: 'item-1',
+          segments: [{ localId: 'sentence-1' }, { localId: 'sentence-2' }],
+        },
+      ]),
+    ).toEqual({
+      'item-1:sentence-1': true,
+    });
+  });
+});
 
 describe('buildWordTimingSegmentIdMap', () => {
   it('uses sentence word links even when every word has the same timestamp', () => {

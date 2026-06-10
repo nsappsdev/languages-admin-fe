@@ -8,6 +8,37 @@ type SentenceTimingRange = TimingRange & {
   wordMarkIds: string[];
 };
 
+type EditableTimingItem = {
+  localId: string;
+  segments: { localId: string }[];
+};
+
+export function getTimingSegmentKey(itemLocalId: string, segmentLocalId: string) {
+  return `${itemLocalId}:${segmentLocalId}`;
+}
+
+export function retainOpenTimingSegments(
+  current: Record<string, true>,
+  items: EditableTimingItem[],
+) {
+  const availableKeys = new Set(
+    items.flatMap((item) =>
+      item.segments.map((segment) =>
+        getTimingSegmentKey(item.localId, segment.localId),
+      ),
+    ),
+  );
+  const retained = Object.fromEntries(
+    Object.keys(current)
+      .filter((key) => availableKeys.has(key))
+      .map((key) => [key, true] as const),
+  );
+
+  return Object.keys(retained).length === Object.keys(current).length
+    ? current
+    : retained;
+}
+
 export function buildWordTimingSegmentIdMap(
   segments: TimingRange[],
   sentenceTimings: SentenceTimingRange[],

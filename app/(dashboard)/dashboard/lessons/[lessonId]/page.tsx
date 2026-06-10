@@ -30,7 +30,11 @@ import {
   clearSegmentTimingDrafts,
   TimingField,
 } from '../../../../../lib/lessonTimingDraft';
-import { buildWordTimingSegmentIdMap } from '../../../../../lib/lessonTimingGrouping';
+import {
+  buildWordTimingSegmentIdMap,
+  getTimingSegmentKey,
+  retainOpenTimingSegments,
+} from '../../../../../lib/lessonTimingGrouping';
 
 const LESSON_STATUSES: LessonStatus[] = ['DRAFT', 'PUBLISHED'];
 
@@ -208,7 +212,9 @@ export default function LessonDetailPage() {
     savedItemsRef.current = Object.fromEntries(
       editableItems.map((item) => [item.id, cloneEditableItem(item)]),
     );
-    setOpenTimingSegments({});
+    setOpenTimingSegments((current) =>
+      retainOpenTimingSegments(current, editableItems),
+    );
   }, [lesson]);
 
   const sortedItems = useMemo(
@@ -1938,10 +1944,6 @@ function isTimingInsideSegment(
   segment: { startMs: number; endMs: number },
 ) {
   return mark.startMs >= segment.startMs && mark.startMs < segment.endMs;
-}
-
-function getTimingSegmentKey(itemLocalId: string, segmentLocalId: string) {
-  return `${itemLocalId}:${segmentLocalId}`;
 }
 
 function getTimingDraftKey(
