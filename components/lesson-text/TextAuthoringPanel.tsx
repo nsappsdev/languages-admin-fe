@@ -21,7 +21,7 @@ interface TextAuthoringPanelProps {
 
 /**
  * Additive text-authoring workspace for one LessonItem ("text"). Mounted
- * alongside the existing legacy item editor; never replaces it, and never
+ * above the collapsed legacy item editor; never
  * writes to the legacy text/audioUrl/timing fields.
  */
 export function TextAuthoringPanel({ lessonId, textId }: TextAuthoringPanelProps) {
@@ -34,6 +34,19 @@ export function TextAuthoringPanel({ lessonId, textId }: TextAuthoringPanelProps
   const [narrationJobId, setNarrationJobId] = useState<string | null>(null);
   const [clipJobId, setClipJobId] = useState<string | null>(null);
   const [savingEntryId, setSavingEntryId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [focusedOccurrenceId, setFocusedOccurrenceId] = useState<string | null>(null);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const runAction = async (action: () => Promise<void>) => {
+    setActionError(null);
+    try {
+      await action();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+    }
+  };
 
   useEffect(() => {
     if (!hasInitializedDraft && workspace) {
@@ -75,6 +88,7 @@ export function TextAuthoringPanel({ lessonId, textId }: TextAuthoringPanelProps
 
   const handleSaveText = async () => {
     await mutations.saveContentRevision.mutateAsync(draftText);
+    setIsEditing(false);
   };
 
   const handleGenerate = async () => {
@@ -141,12 +155,37 @@ export function TextAuthoringPanel({ lessonId, textId }: TextAuthoringPanelProps
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-brand-200 bg-brand-50/30 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Text workspace (V2, admin-only)</p>
+    <section aria-label="Text workspace (V2)" style={{ containerType: 'inline-size', containerName: 'text-workspace' }} className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+      <style>{`
+        .text-workspace-columns { display: flex; flex-direction: column; }
+        .text-workspace-words { border-top: 1px solid #e2e8f0; padding-top: 1rem; }
+        .text-workspace-sentences { order: -1; padding-bottom: 1rem; }
+        @container text-workspace (min-width: 540px) {
+          .text-workspace-columns { display: grid; grid-template-columns: minmax(230px, 0.85fr) minmax(0, 1.15fr); }
+          .text-workspace-words { border-top: 0; border-right: 1px solid #e2e8f0; padding-top: 0; padding-right: 1rem; }
+          .text-workspace-sentences { order: 0; padding-left: 1.25rem; padding-bottom: 0; }
+        }
+      `}</style>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">Text workspace <span className="ml-1 text-[10px] font-medium uppercase tracking-wider text-slate-400">V2</span></h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {hasUnsavedTextChanges ? 'Unsaved text changes' : workspace.contentRevision ? 'Saved revision' : 'Save a revision to begin'}
+            {occurrencesQuery.data ? ` · ${occurrencesQuery.data.sentences.length} sentences` : ''}
+          </p>
+        </div>
+        {workspace.contentRevision ? (
+          <button type="button" onClick={() => setIsEditing(!isEditing)} aria-expanded={isEditing} aria-controls={`text-editor-${textId}`}
+            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+            {isEditing ? 'Close editor' : 'Edit text'}
+          </button>
+        ) : null}
+      </div>
 
-      <div>
-        <label className="block text-xs font-medium text-slate-500">Text</label>
+      <div id={`text-editor-${textId}`} hidden={!isEditing && Boolean(workspace.contentRevision)}>
+        <label htmlFor={`text-draft-${textId}`} className="block text-sm font-medium text-slate-700">Full text</label>
         <textarea
+          id={`text-draft-${textId}`}
           value={draftText}
           onChange={(e) => setDraftText(e.target.value)}
           className="mt-1 min-h-32 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm"
@@ -154,13 +193,15 @@ export function TextAuthoringPanel({ lessonId, textId }: TextAuthoringPanelProps
         />
         <button
           type="button"
-          onClick={handleSaveText}
-          disabled={!hasUnsavedTextChanges || mutations.saveContentRevision.isPending}
+          onClick={() => void runAction(handleSaveText)}
+          disabled={(!hasUnsavedTextChanges && Boolean(workspace.contentRevision)) || !draftText.trim() || mutations.saveContentRevision.isPending}
           className="mt-2 rounded-md border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {mutations.saveContentRevision.isPending ? 'Saving…' : 'Save text'}
         </button>
       </div>
+
+      {actionError ? <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{actionError}</p> : null}
 
       <NarrationControls
         narration={workspace.narration}
@@ -173,45 +214,65 @@ export function TextAuthoringPanel({ lessonId, textId }: TextAuthoringPanelProps
           narrationJobQuery.data?.job.status === 'RUNNING'
         }
         activeJob={narrationJobQuery.data?.job}
-        onGenerate={handleGenerate}
+        onGenerate={() => void runAction(handleGenerate)}
         onRetry={handleRetryGenerate}
       />
 
-      {workspace.alignmentSummary ? (
-        <div>
-          <p className="text-xs font-semibold text-slate-700 mb-2">Select learning words</p>
-          {occurrencesQuery.data ? (
-            <OccurrenceSelection
-              occurrences={occurrencesQuery.data}
-              pendingOccurrenceId={mutations.setSelection.isPending ? 'pending' : null}
-              onToggle={handleToggle}
-            />
-          ) : (
-            <p className="text-xs text-slate-500">Loading occurrences…</p>
+      <div className="text-workspace-columns min-w-0 border-t border-slate-200 pt-4">
+        <section aria-label="Selected words and translations" className="text-workspace-words min-w-0 space-y-3">
+          <div className="px-3"><h3 className="text-sm font-semibold text-slate-800">Learning words</h3><p className="mt-0.5 text-xs text-slate-400">Armenian translations · narration clips</p></div>
+          <TextVocabularyEditor
+            selectedOccurrences={selectedOccurrences}
+            sentences={occurrencesQuery.data?.sentences ?? []}
+            focusedOccurrenceId={focusedOccurrenceId}
+            focusRequest={focusRequest}
+            onRemove={(id) => void runAction(() => handleToggle(id, false))}
+            isSelecting={mutations.setSelection.isPending}
+            onSaveTranslation={(id, translation) => void runAction(() => handleSaveTranslation(id, translation))}
+            onExtractClips={(ids) => void runAction(() => handleExtractClips(ids))}
+            isExtracting={
+              mutations.requestClipJob.isPending ||
+              clipJobQuery.data?.job.status === 'QUEUED' ||
+              clipJobQuery.data?.job.status === 'RUNNING'
+            }
+            savingEntryId={savingEntryId}
+          />
+          {clipJobQuery.data?.job.status === 'FAILED' ? <p role="alert" className="text-sm text-rose-700">Clip extraction failed: {clipJobQuery.data.job.error?.message ?? 'Unknown error'}</p> : null}
+          {clipJobQuery.data?.job.status === 'QUEUED' ? <p role="status" className="text-xs text-amber-700">Clip extraction queued. Waiting for the audio worker.</p> : null}
+        </section>
+        <section aria-label="Aligned sentences" className="text-workspace-sentences min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-slate-800">Sentences</h3>
+            <span className="text-[11px] text-slate-400">{occurrencesQuery.data?.sentences.length ?? 0} aligned</span>
+          </div>
+          {workspace.alignmentSummary ? occurrencesQuery.error ? (
+            <p role="alert" className="text-sm text-rose-700">Could not load aligned sentences. <button type="button" onClick={() => void occurrencesQuery.refetch()} className="underline">Try again</button></p>
+          ) : occurrencesQuery.data ? (
+            <>
+              <p className="text-xs leading-relaxed text-slate-500">Select words to teach. Highlighted words open their translation.</p>
+              <OccurrenceSelection
+                occurrences={occurrencesQuery.data}
+                pendingOccurrenceId={mutations.setSelection.isPending ? mutations.setSelection.variables?.changes[0]?.occurrenceId ?? null : null}
+                onToggle={(id, selected) => void runAction(() => handleToggle(id, selected))}
+                focusedOccurrenceId={focusedOccurrenceId}
+                onFocusOccurrence={(id) => {
+                  setFocusedOccurrenceId(id);
+                  setFocusRequest((request) => request + 1);
+                }}
+              />
+            </>
+          ) : <p className="text-sm text-slate-500">Loading aligned sentences…</p> : (
+            <div className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">Generate narration for this revision to see its aligned sentences and select learning words.</div>
           )}
-        </div>
-      ) : null}
-
-      {workspace.alignmentSummary ? (
-        <TextVocabularyEditor
-          selectedOccurrences={selectedOccurrences}
-          onSaveTranslation={handleSaveTranslation}
-          onExtractClips={handleExtractClips}
-          isExtracting={
-            mutations.requestClipJob.isPending ||
-            clipJobQuery.data?.job.status === 'QUEUED' ||
-            clipJobQuery.data?.job.status === 'RUNNING'
-          }
-          savingEntryId={savingEntryId}
-        />
-      ) : null}
+        </section>
+      </div>
 
       <TextReadinessPanel
         readiness={readinessQuery.data?.readiness}
-        onApprove={handleApprove}
+        onApprove={() => void runAction(handleApprove)}
         isApproving={mutations.approveRelease.isPending}
         approvedReleaseId={workspace.approvedTextReleaseId}
       />
-    </div>
+    </section>
   );
 }

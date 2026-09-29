@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useLesson } from '../../../../../hooks/useLesson';
 import { TextAuthoringPanel } from '../../../../../components/lesson-text/TextAuthoringPanel';
+import { ReaderPublication } from '../../../../../components/lesson-text/ReaderPublication';
 import { useLessonMutations } from '../../../../../hooks/useLessonMutations';
 import { useLessonVocabularyMutations } from '../../../../../hooks/useLessonVocabularyMutations';
 import { useToast } from '../../../../../components/providers/ToastProvider';
@@ -1067,27 +1068,33 @@ export default function LessonDetailPage() {
         {sortedItems.map((item, index) => (
           <div
             key={item.localId}
-            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4"
+            className="min-w-0 space-y-3"
           >
             <div className="flex items-start justify-between gap-4">
-              <p className="text-sm font-semibold text-slate-900">#{index + 1}</p>
+              <h2 className="pt-1 text-sm font-semibold text-slate-700">Text {index + 1}</h2>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => moveItem(item.localId, 'up')}
-                  className={smallNeutralButtonClass}
-                  disabled={index === 0}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveItem(item.localId, 'down')}
-                  className={smallNeutralButtonClass}
-                  disabled={index === sortedItems.length - 1}
-                >
-                  ↓
-                </button>
+                {sortedItems.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-label={`Move text ${index + 1} up`}
+                      onClick={() => moveItem(item.localId, 'up')}
+                      className={smallNeutralButtonClass}
+                      disabled={index === 0}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Move text ${index + 1} down`}
+                      onClick={() => moveItem(item.localId, 'down')}
+                      className={smallNeutralButtonClass}
+                      disabled={index === sortedItems.length - 1}
+                    >
+                      ↓
+                    </button>
+                  </>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => removeItem(item.localId)}
@@ -1098,6 +1105,18 @@ export default function LessonDetailPage() {
               </div>
             </div>
 
+            {persistedItemIds.has(item.id) ? (
+              <TextAuthoringPanel lessonId={lessonId} textId={item.id} />
+            ) : (
+              <p className="text-xs text-slate-500">
+                Save this item once before the new text-authoring workspace becomes available.
+              </p>
+            )}
+
+            <details open={!persistedItemIds.has(item.id)} className="rounded-xl border border-slate-200 bg-white p-4">
+              <summary className="cursor-pointer text-sm font-medium text-slate-600">Legacy item editor — text, uploaded audio &amp; timings</summary>
+              <p className="mt-3 text-xs text-slate-500">These fields belong to the original lesson reader. They are separate from the V2 revision and narration above.</p>
+              <div className="mt-4 space-y-4">
             <div>
               <label className="block text-xs font-medium text-slate-500">Text</label>
               <textarea
@@ -1174,13 +1193,6 @@ export default function LessonDetailPage() {
               )}
             </div>
 
-            {persistedItemIds.has(item.id) ? (
-              <TextAuthoringPanel lessonId={lessonId} textId={item.id} />
-            ) : (
-              <p className="text-xs text-slate-500">
-                Save this item once before the new text-authoring workspace becomes available.
-              </p>
-            )}
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1241,8 +1253,8 @@ export default function LessonDetailPage() {
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="block text-xs font-medium text-slate-500">Sentences</label>
-                <span className="text-xs text-slate-500">{item.segments.length} sentences</span>
+                <label className="block text-xs font-medium text-slate-500">Legacy segments</label>
+                <span className="text-xs text-slate-500">{item.segments.length} segments</span>
               </div>
 
               {item.segments.length ? (
@@ -1305,7 +1317,7 @@ export default function LessonDetailPage() {
                       >
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <p className="text-xs font-medium text-slate-500">Sentence {segmentIndex + 1}</p>
+                            <p className="text-xs font-medium text-slate-500">Segment {segmentIndex + 1}</p>
                             <p className="text-[11px] text-slate-400">
                               {segmentWordTimings.length} word timings
                             </p>
@@ -1586,6 +1598,8 @@ export default function LessonDetailPage() {
                 </div>
               )}
             </div>
+              </div>
+            </details>
           </div>
         ))}
       </div>
@@ -1846,9 +1860,13 @@ export default function LessonDetailPage() {
         </span>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(320px,0.82fr)_minmax(0,1.68fr)]">
+      <h1 className="text-xl font-semibold text-slate-900">{lesson?.title ?? 'Lesson'}</h1>
+      {lesson ? <ReaderPublication lessonId={lessonId} publicationId={lesson.currentPublicationId} /> : null}
+      <div className="space-y-5">
+        <details className="rounded-xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer text-sm font-medium text-slate-700">Lesson settings &amp; legacy vocabulary</summary>
         <form
-          className="space-y-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm"
+          className="mt-4 space-y-4"
           onSubmit={handleSaveAll}
         >
           <div>
@@ -1906,37 +1924,24 @@ export default function LessonDetailPage() {
           >
             {updateLesson.isPending ? 'Saving…' : 'Save lesson'}
           </button>
-          <div className="pt-2">{renderDictionaryCoverage()}</div>
+          <details className="border-t border-slate-200 pt-3">
+            <summary className="cursor-pointer text-sm text-slate-600">Legacy vocabulary translations</summary>
+            <div className="mt-3">{renderDictionaryCoverage()}</div>
+          </details>
         </form>
+        </details>
 
-        <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Lesson Items</h2>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  void saveLessonItems();
-                }}
-                disabled={updateLesson.isPending}
-                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {updateLesson.isPending ? 'Saving…' : 'Save items'}
-              </button>
-            </div>
-          </div>
-          <div className="mt-4 space-y-4">{renderItemsBody()}</div>
+        <section aria-label="Lesson items" className="min-w-0">
+          <div className="space-y-5">{renderItemsBody()}</div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            {itemsFeedback ? <p className="text-sm text-slate-500">{itemsFeedback}</p> : <span />}
+            <p className="text-xs text-slate-500" role="status">{itemsFeedback || 'Save items applies item order and legacy edits. V2 changes save in the workspace.'}</p>
             <button
               type="button"
               onClick={() => {
                 void saveLessonItems();
               }}
               disabled={updateLesson.isPending}
-              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
             >
               {updateLesson.isPending ? 'Saving…' : 'Save items'}
             </button>

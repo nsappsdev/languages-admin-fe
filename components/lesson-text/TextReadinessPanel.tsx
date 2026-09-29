@@ -25,34 +25,34 @@ export function TextReadinessPanel({ readiness, onApprove, isApproving, approved
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
-      <p className="text-xs font-semibold text-slate-700">Readiness</p>
-      <ul className="text-xs text-slate-600 space-y-0.5">
-        <li>Selected words: {readiness.selectedCount}</li>
-        <li>Missing translation: {readiness.selectedMissingTranslationCount}</li>
-        <li>Missing clip: {readiness.selectedMissingClipCount}</li>
-        <li>Eligible for learners: {readiness.eligibleEntryIds.length}</li>
-      </ul>
-      {readiness.reasonCodes.length ? (
-        <ul className="text-xs text-amber-700 list-disc pl-4">
-          {readiness.reasonCodes.map((code) => (
-            <li key={code}>{REASON_LABELS[code] ?? code}</li>
-          ))}
+    <div className="space-y-2 border-t border-slate-200 pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+        <p className={`text-sm font-semibold ${readiness.readyForApproval ? 'text-emerald-700' : 'text-slate-800'}`}>{readiness.readyForApproval ? 'Ready for admin approval' : readiness.narrationValid && readiness.alignmentStatus === 'OK' ? 'Finish selected words to approve' : 'Not ready for approval'}</p>
+        <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+          <li>Selected words: {readiness.selectedCount}</li>
+          <li>Missing translation: {readiness.selectedMissingTranslationCount}</li>
+          <li>Missing clip: {readiness.selectedMissingClipCount}</li>
         </ul>
+        </div>
+        <button
+          type="button"
+          onClick={onApprove}
+          disabled={!readiness.readyForApproval || isApproving}
+          className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isApproving ? 'Approving…' : 'Approve text version'}
+        </button>
+      </div>
+      {readiness.reasonCodes.length ? (
+        <details className="text-xs text-slate-500"><summary className="cursor-pointer">Readiness details</summary><ul className="mt-2 list-disc pl-4">
+          {readiness.reasonCodes.map((code) => <li key={code}>{REASON_LABELS[code] ?? code}</li>)}
+        </ul></details>
       ) : null}
-      <button
-        type="button"
-        onClick={onApprove}
-        disabled={!readiness.readyForApproval || isApproving}
-        className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {isApproving ? 'Approving…' : 'Approve text version'}
-      </button>
       <p className="text-xs text-slate-500">
-        {approvedReleaseId
-          ? `Last approved release: ${approvedReleaseId}.`
-          : 'Approving records an admin milestone snapshot; it does not make this content available to learners.'}
+        Admin approval only. This does not publish content to learners.
       </p>
+      {approvedReleaseId ? <p className="break-all text-xs text-slate-500">Last approved release: {approvedReleaseId}.</p> : null}
     </div>
   );
 }

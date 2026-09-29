@@ -1,6 +1,6 @@
 import { describe, expect, it, jest, beforeEach } from '@jest/globals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { AuthProvider } from '../../providers/AuthProvider';
@@ -185,7 +185,7 @@ describe('TextAuthoringPanel', () => {
     expect(screen.getByText(/save the text before generating narration/i)).toBeInTheDocument();
 
     const saveTextButton = screen.getByRole('button', { name: /save text/i });
-    expect(saveTextButton).toBeDisabled(); // no edits yet, nothing to save
+    expect(saveTextButton).not.toBeDisabled(); // the first V2 revision can preserve legacy text
 
     const textarea = screen.getByDisplayValue('Hello world.');
     await user.clear(textarea);
@@ -198,12 +198,12 @@ describe('TextAuthoringPanel', () => {
     await user.click(generateButton);
 
     // --- Occurrences render unchecked by default ---
-    const checkbox = await screen.findByRole('checkbox', { name: /select occurrence "hello"/i });
-    expect(checkbox).not.toBeChecked();
+    const checkbox = await screen.findByRole('button', { name: /select occurrence "hello"/i });
+    expect(checkbox.getAttribute('aria-pressed')).toBe('false');
 
     // --- Select the occurrence ---
     await user.click(checkbox);
-    await waitFor(() => expect(checkbox).toBeChecked());
+    await waitFor(() => expect(checkbox.getAttribute('aria-pressed')).toBe('true'));
 
     // --- Readiness shows selected-but-incomplete ---
     await waitFor(() => {
@@ -212,7 +212,13 @@ describe('TextAuthoringPanel', () => {
     expect(screen.getByRole('button', { name: /approve text version/i })).toBeDisabled();
 
     // --- Translation is saved to this entry only (PATCH .../vocabulary/entry-1) ---
-    const translationInput = screen.getByLabelText(/translation for hello at position 0/i);
+    const translationInput = screen.getByRole('textbox', { name: /translation for hello at position 0/i });
+    await user.click(screen.getByText('Full narration'));
+    await user.click(screen.getByRole('button', { name: /show occurrence "hello"/i }));
+    expect(document.activeElement).toBe(translationInput);
+    await user.click(screen.getByText('Full narration'));
+    await user.click(screen.getByRole('button', { name: /show occurrence "hello"/i }));
+    expect(document.activeElement).toBe(translationInput);
     await user.type(translationInput, 'բարև');
     await user.click(screen.getByRole('button', { name: /save translation/i }));
 

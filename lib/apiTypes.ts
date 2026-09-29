@@ -144,6 +144,7 @@ export interface LessonDictionaryCoverageItem {
 }
 
 export interface LessonSummary {
+  currentPublicationId?: string | null;
   id: string;
   title: string;
   description?: string | null;

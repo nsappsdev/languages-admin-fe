@@ -55,6 +55,7 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
     queryClient.invalidateQueries({ queryKey: ['text-readiness', lessonId, textId] });
   };
   const invalidateSelectionState = () => {
+    queryClient.invalidateQueries({ queryKey: ['text-workspace', lessonId, textId] });
     queryClient.invalidateQueries({ queryKey: ['text-occurrences', lessonId, textId] });
     queryClient.invalidateQueries({ queryKey: ['text-readiness', lessonId, textId] });
   };
