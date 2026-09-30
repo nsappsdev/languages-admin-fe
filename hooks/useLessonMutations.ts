@@ -74,7 +74,11 @@ export const useLessonMutations = () => {
         body: JSON.stringify(data),
       }),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['lessons'] });
+      // Both the list and the detail query key must be invalidated: the
+      // detail page reads from ['lesson', lessonId], and only invalidating
+      // ['lessons'] previously left stale item/vocabulary state cached after
+      // a full save.
+      invalidate(variables.lessonId);
     },
   });
 
