@@ -1,159 +1,17 @@
 export type LessonStatus = 'DRAFT' | 'PUBLISHED';
-
-export interface LessonItemSegment {
-  id: string;
-  text: string;
-  startMs: number;
-  endMs: number;
-}
-
-export interface LessonItemWordTiming {
-  id: string;
-  text: string;
-  normalizedText: string;
-  startMs: number;
-  endMs: number;
-  order: number;
-}
-
-export interface LessonItemSentenceTiming {
-  id: string;
-  text: string;
-  startMs: number;
-  endMs: number;
-  wordMarkIds: string[];
-  order: number;
-}
-
-export interface LessonItemChunkTiming {
-  id: string;
-  text: string;
-  normalizedText: string;
-  startMs: number;
-  endMs: number;
-  wordMarkIds: string[];
-  order: number;
-}
-
 export interface LessonItem {
   id: string;
   lessonId: string;
   text: string;
-  audioUrl: string;
   order: number;
-  segments: LessonItemSegment[];
-  wordTimings: LessonItemWordTiming[];
-  sentenceTimings: LessonItemSentenceTiming[];
-  chunkTimings: LessonItemChunkTiming[];
 }
-
-export interface GeneratedLessonTimings {
-  segments: LessonItemSegment[];
-  wordTimings: LessonItemWordTiming[];
-  sentenceTimings: LessonItemSentenceTiming[];
-  chunkTimings: LessonItemChunkTiming[];
-  warnings: string[];
-  transcriptText: string;
-}
-
-export type TimingTranscriptionProvider =
-  | 'openai-whisper'
-  | 'dashscope-qwen-asr-flash'
-  | 'dashscope-qwen-filetrans';
-
-export interface TimingBenchmarkProviderSummary {
-  transcriptPreview: string;
-  transcriptWordCount: number;
-  audioDurationSeconds?: number;
-  wordTimingCount: number;
-  sentenceTimingCount: number;
-  segmentCount: number;
-  warningCount: number;
-  estimatedWordCount: number;
-  warnings: string[];
-  firstWordTiming: { text: string; startMs: number; endMs: number } | null;
-  lastWordTiming: { text: string; startMs: number; endMs: number } | null;
-}
-
-export interface TimingBenchmarkProviderResult {
-  provider: TimingTranscriptionProvider;
-  ok: boolean;
-  error?: string;
-  summary?: TimingBenchmarkProviderSummary;
-}
-
-export interface LessonTimingBenchmarkResponse {
-  temp: true;
-  lessonId: string;
-  itemId: string;
-  itemAudioUrl: string;
-  lessonText: string;
-  results: TimingBenchmarkProviderResult[];
-  deleteReminder: string;
-}
-
-export interface UploadedAudioFile {
-  audioUrl: string;
-  fileName: string;
-  originalName: string;
-  mimeType: string;
-  size: number;
-}
-
-export type VocabularyKind = 'WORD' | 'PHRASE' | 'SENTENCE';
-
-export interface VocabularyTranslation {
-  id: string;
-  entryId?: string;
-  languageCode: string;
-  translation: string;
-  usageExample?: string | null;
-}
-
-export interface VocabularyEntry {
-  id: string;
-  lessonId?: string;
-  sourceItemId?: string | null;
-  englishText: string;
-  normalizedText?: string;
-  focusText?: string | null;
-  focusNormalizedText?: string | null;
-  kind: VocabularyKind;
-  order?: number;
-  notes?: string | null;
-  tags: string[];
-  translations: VocabularyTranslation[];
-}
-
-export interface PullVocabularyFromTimingsResult {
-  candidates: number;
-  created: number;
-  skipped: number;
-}
-
-export interface LessonDictionaryCoverageItem {
-  text: string;
-  normalizedText: string;
-  kind: VocabularyKind;
-  entryId: string | null;
-  hasTranslation: boolean;
-  hasArmenianTranslation: boolean;
-  translations: VocabularyTranslation[];
-  matched?: boolean;
-  matchCount?: number;
-}
-
 export interface LessonSummary {
-  currentPublicationId?: string | null;
   id: string;
   title: string;
   description?: string | null;
+  currentPublicationId: string | null;
   status: LessonStatus;
   items: LessonItem[];
-  dictionary?: VocabularyEntry[];
-  dictionaryCoverage?: LessonDictionaryCoverageItem[];
-  vocabulary?: VocabularyEntry[];
-  vocabularyCoverage?: LessonDictionaryCoverageItem[];
 }
 
 export interface LearnerSummary {
@@ -241,29 +99,4 @@ export interface AppSettings {
   updateMessage: string;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface BulkImportRow {
-  englishText: string;
-  translation: string;
-  kind?: VocabularyKind;
-  notes?: string;
-  tags?: string[];
-  usageExample?: string;
-}
-
-export interface BulkImportResult {
-  created: number;
-  mergedTranslations: number;
-  skipped: number;
-  errors: Array<{ row: number; message: string }>;
-}
-
-export interface BulkAiTranslationResult {
-  translated: number;
-  skipped: number;
-}
-
-export interface BulkDeleteResult {
-  deleted: number;
 }

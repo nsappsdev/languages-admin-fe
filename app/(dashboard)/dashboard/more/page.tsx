@@ -6,11 +6,6 @@ import { useAuth } from '../../../../components/providers/AuthProvider';
 
 const LINKS = [
   { href: '/dashboard/settings', label: 'Settings', desc: 'App settings, fonts, repetitions' },
-  {
-    href: '/dashboard/more/timing-benchmark-temp',
-    label: 'Timing benchmark (temporary)',
-    desc: 'Compare Whisper vs Qwen on real lesson audio, then delete this tool',
-  },
 ];
 
 export default function MorePage() {

@@ -27,12 +27,11 @@ export interface TextWorkspaceDetail {
   id: string;
   lessonId: string;
   draftVersion: number;
-  legacyText: string;
   contentRevision: TextContentRevision | null;
   narration: TextNarrationSummary | null;
   alignmentSummary: TextAlignmentSummary | null;
-  approvedTextReleaseId: string | null;
   audioGenerationConfigured: boolean;
+  activeNarrationJobId?: string | null;
 }
 
 export type AudioJobKind = 'GENERATE_NARRATION' | 'EXTRACT_CLIPS';
@@ -109,6 +108,7 @@ export interface TextReadiness {
   selectedMissingTranslationCount: number;
   selectedMissingClipCount: number;
   eligibleEntryIds: string[];
-  readyForApproval: boolean;
+  canPublish: boolean;
+  readyForPublication: boolean;
   reasonCodes: string[];
 }

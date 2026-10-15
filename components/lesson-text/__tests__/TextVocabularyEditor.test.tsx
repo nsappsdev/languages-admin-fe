@@ -17,7 +17,7 @@ const occurrence: WordOccurrenceDto = {
 function setup() {
   const onSaveTranslation = jest.fn();
   render(<TextVocabularyEditor selectedOccurrences={[occurrence]} sentences={[{ id: 's1', text: 'The cat sat.', charStart: 0, charEnd: 12, occurrenceIds: [1] }]}
-    onSaveTranslation={onSaveTranslation} onExtractClips={jest.fn()} isExtracting={false} savingEntryId={null}
+    onSaveTranslation={onSaveTranslation} savingEntryId={null}
     focusedOccurrenceId={null} focusRequest={0} onRemove={jest.fn()} isSelecting={false} />);
   return { onSaveTranslation, audio: screen.getByTestId('clip-player-cat-first') as HTMLAudioElement };
 }

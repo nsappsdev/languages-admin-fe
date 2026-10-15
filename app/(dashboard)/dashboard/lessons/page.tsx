@@ -1,111 +1,15 @@
 'use client';
-
 import Link from 'next/link';
-import { useState } from 'react';
 import { useLessons } from '../../../../hooks/useLessons';
-import { useLessonMutations } from '../../../../hooks/useLessonMutations';
-import { useToast } from '../../../../components/providers/ToastProvider';
-import { ConfirmDialog } from '../../../../components/ui/ConfirmDialog';
-
-const smallSecondaryButtonClass =
-  'inline-flex items-center justify-center rounded-md border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50';
-
-const smallDangerButtonClass =
-  'inline-flex items-center justify-center rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50';
-
 export default function LessonsPage() {
   const { data, isLoading, error } = useLessons();
-  const { deleteLesson } = useLessonMutations();
-  const { notify } = useToast();
-  const lessons = data?.lessons ?? [];
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-
-  const handleDelete = async () => {
-    if (!confirmDeleteId) return;
-    const lessonId = confirmDeleteId;
-    setPendingId(lessonId);
-    setDeleteError(null);
-    try {
-      await deleteLesson.mutateAsync({ lessonId });
-      notify('Lesson deleted');
-      setConfirmDeleteId(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete lesson';
-      setDeleteError(message);
-      notify(message, 'error');
-    } finally {
-      setPendingId(null);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Lessons</h1>
-          <p className="text-xs sm:text-sm text-slate-500">Manage text and audio lesson content.</p>
-        </div>
-        <Link
-          href="/dashboard/lessons/new"
-          className="shrink-0 rounded-lg bg-brand-600 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white"
-        >
-          New lesson
-        </Link>
-      </div>
-      <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
-        {deleteError && <p className="mb-3 text-sm text-rose-600">{deleteError}</p>}
-        {isLoading ? <p className="text-sm text-slate-500">Loading lessons…</p> : null}
-        {!isLoading && error ? (
-          <p className="text-sm text-rose-600">Failed to load lessons: {error.message}</p>
-        ) : null}
-        {!isLoading && !error && !lessons.length ? (
-          <p className="text-sm text-slate-500">No lessons yet. Create one to begin.</p>
-        ) : null}
-        {!isLoading && !error && lessons.length ? (
-          <div className="divide-y divide-slate-100">
-            {lessons.map((lesson) => (
-              <div key={lesson.id} className="flex items-center justify-between py-4">
-                <Link href={`/dashboard/lessons/${lesson.id}`} className="flex-1">
-                  <p className="text-base font-semibold text-slate-900">{lesson.title}</p>
-                  <p className="text-sm text-slate-500">
-                    {lesson.items.length} items • {lesson.status}
-                  </p>
-                </Link>
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={`/dashboard/lessons/${lesson.id}`}
-                    className={smallSecondaryButtonClass}
-                  >
-                    View
-                  </Link>
-                  <button
-                    className={smallDangerButtonClass}
-                    onClick={() => setConfirmDeleteId(lesson.id)}
-                    disabled={pendingId === lesson.id}
-                  >
-                    {pendingId === lesson.id ? 'Deleting…' : 'Delete'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
-      {confirmDeleteId ? (
-        <ConfirmDialog
-          title="Delete lesson?"
-          description="This will permanently delete the lesson, its items, and lesson dictionary state. This cannot be undone."
-          confirmLabel="Delete"
-          tone="danger"
-          isPending={pendingId === confirmDeleteId}
-          onCancel={() => setConfirmDeleteId(null)}
-          onConfirm={() => {
-            void handleDelete();
-          }}
-        />
-      ) : null}
+  return <div className="space-y-4">
+    <div className="flex items-center justify-between"><h1 className="text-2xl font-semibold">Lessons</h1><Link href="/dashboard/lessons/new" className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white">New lesson</Link></div>
+    <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white p-4">
+      {isLoading ? <p>Loading lessons…</p> : null}
+      {error ? <p role="alert">Unable to load lessons.</p> : null}
+      {data?.lessons.map(lesson => <Link key={lesson.id} href={`/dashboard/lessons/${lesson.id}`} className="block py-4"><p className="font-semibold">{lesson.title}</p><p className="mt-1 text-sm text-slate-500">{lesson.items.length} texts · {lesson.currentPublicationId ? 'Published' : 'Draft'}</p></Link>)}
+      {data && !data.lessons.length ? <p>No lessons yet. Create one to begin.</p> : null}
     </div>
-  );
+  </div>;
 }

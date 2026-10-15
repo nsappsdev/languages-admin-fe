@@ -47,7 +47,7 @@ export function OccurrenceSelection({ occurrences, pendingOccurrenceId, onToggle
               const punctuation = sentence.text.slice(end, gapEnd).match(/^\p{P}+/u)?.[0] ?? '';
               cursor = end + punctuation.length;
               const disabled = needsReview || occurrence.mappingStatus === 'UNMAPPED' || Boolean(pendingOccurrenceId);
-              const incomplete = occurrence.selected && (!occurrence.clipAssetId || !occurrence.translations.some((t) => t.languageCode === 'am' && t.translation.trim()));
+              const incomplete = occurrence.selected && !occurrence.translations.some((t) => ['hy', 'am'].includes(t.languageCode) && t.translation.trim());
               return (
                 <Fragment key={occurrence.id}>
                   {prefix}

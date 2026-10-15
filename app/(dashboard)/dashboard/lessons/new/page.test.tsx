@@ -1,4 +1,3 @@
-import { describe, expect, it, jest, beforeEach } from '@jest/globals';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const pushMock = jest.fn();
@@ -51,21 +50,8 @@ describe('NewLessonPage', () => {
 
     const [, options] = requestMock.mock.calls[0];
     const payload = JSON.parse(String(options.body));
-    expect(payload.items).toEqual([
-      expect.objectContaining({
-        text: 'A full pasted lesson text.',
-        segments: [
-          {
-            id: 'segment-1',
-            text: 'A full pasted lesson text.',
-            startMs: 0,
-            endMs: 1000,
-          },
-        ],
-        wordTimings: [],
-        sentenceTimings: [],
-      }),
-    ]);
+    expect(payload.items).toEqual([{ text: 'A full pasted lesson text.' }]);
+    expect(payload.status).toBeUndefined();
     expect(pushMock).toHaveBeenCalledWith('/dashboard/lessons/lesson-1');
   });
 });
