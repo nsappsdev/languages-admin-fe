@@ -32,8 +32,8 @@ const DEFAULT_READING_MODES: ReadingModeSettings[] = [
 ];
 
 const MODE_RULE_LABELS: Record<ReadingModeSettings['id'], string> = {
-  introduction: 'Plays the uploaded lesson audio normally.',
-  teaching: 'Repeats marked unknown word ranges from the uploaded audio.',
+  introduction: 'Plays the full lesson narration normally.',
+  teaching: 'Repeats selected learning words from the same narration.',
   deep_learning: 'Repeats unknown words and sentence ranges with multiple unknown words.',
 };
 
@@ -43,6 +43,8 @@ export default function SettingsPage() {
 
   const [form, setForm] = useState<Partial<AppSettings>>({});
   const [saved, setSaved] = useState(false);
+  const pauseMs = form.wordRepetitionPauseMs ?? 800;
+  const validPause = Number.isInteger(pauseMs) && pauseMs >= 0 && pauseMs <= 3000;
 
   useEffect(() => {
     if (data?.settings) {
@@ -51,6 +53,7 @@ export default function SettingsPage() {
   }, [data?.settings]);
 
   const handleSave = () => {
+    if (!validPause) return;
     updateSettings.mutate(
       {
         readingModes: (form.readingModes ?? DEFAULT_READING_MODES).map((mode) => ({
@@ -270,31 +273,41 @@ export default function SettingsPage() {
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <label className="space-y-1">
             <span className="block text-sm font-medium text-slate-700">
-              Pause between repeated words
+              Pause between repeated words (milliseconds)
             </span>
             <span className="block text-xs text-slate-500">
-              Teaching and Deep Learning wait this long before replaying an unknown word.
+              Controls the quiet gap between repetitions in Practice and Deep learning, including quiet clip edges.
+              Save, then reopen the lesson to apply it. 400 ms is a good starting point for a flowing rhythm.
             </span>
             <div className="mt-2 flex items-center gap-3">
               <input
                 type="number"
+                aria-label="Pause between repeated words (milliseconds)"
+                aria-describedby="repetition-pause-help"
+                aria-invalid={!validPause}
                 min={0}
                 max={3000}
-                step={100}
-                value={form.wordRepetitionPauseMs ?? 800}
-                onChange={(event) =>
+                step={50}
+                value={Number.isFinite(pauseMs) ? pauseMs : ''}
+                onChange={(event) => {
+                  setSaved(false);
                   setForm((current) => ({
                     ...current,
-                    wordRepetitionPauseMs: Number(event.target.value),
-                  }))
-                }
+                    wordRepetitionPauseMs: event.target.value === '' ? NaN : Number(event.target.value),
+                  }));
+                }}
                 className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-sm"
               />
               <span className="text-sm text-slate-500">
-                {((form.wordRepetitionPauseMs ?? 800) / 1000).toFixed(1)}s
+                {validPause ? `${(pauseMs / 1000).toFixed(2)} s` : 'Enter 0–3000 ms'}
               </span>
             </div>
           </label>
+          <p id="repetition-pause-help" className="mt-2 text-xs text-slate-500">0 ms joins repetitions directly. 1000 ms is one second. Repetition counts are controlled by each reading mode above.</p>
+          {!validPause && <p role="alert" className="mt-2 text-sm text-red-600">Enter a whole number from 0 to 3000 milliseconds.</p>}
+          <button type="button" className="mt-3 text-sm font-medium text-brand-700" onClick={() => {
+            setSaved(false); setForm(current => ({ ...current, wordRepetitionPauseMs: 400 }));
+          }}>Use 400 ms</button>
         </div>
       </section>
 
@@ -568,7 +581,7 @@ export default function SettingsPage() {
       <div className="flex items-center gap-4">
         <button
           onClick={handleSave}
-          disabled={updateSettings.isPending}
+          disabled={updateSettings.isPending || !validPause}
           className="rounded-lg bg-brand-600 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
         >
           {updateSettings.isPending ? 'Saving…' : 'Save settings'}

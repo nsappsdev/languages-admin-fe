@@ -53,11 +53,13 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
   const invalidateWorkspace = () => {
     queryClient.invalidateQueries({ queryKey: ['text-workspace', lessonId, textId] });
     queryClient.invalidateQueries({ queryKey: ['text-readiness', lessonId, textId] });
+    queryClient.invalidateQueries({ queryKey: ['lesson', lessonId] });
   };
   const invalidateSelectionState = () => {
     queryClient.invalidateQueries({ queryKey: ['text-workspace', lessonId, textId] });
     queryClient.invalidateQueries({ queryKey: ['text-occurrences', lessonId, textId] });
     queryClient.invalidateQueries({ queryKey: ['text-readiness', lessonId, textId] });
+    queryClient.invalidateQueries({ queryKey: ['lesson', lessonId] });
   };
 
   const saveContentRevision = useMutation({
@@ -76,6 +78,7 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
         headers: { 'Idempotency-Key': createIdempotencyKey() },
         body: JSON.stringify({ contentRevisionId }),
       }),
+    onSuccess: invalidateSelectionState,
   });
 
   const setSelection = useMutation({
@@ -108,46 +111,5 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
     onSuccess: invalidateSelectionState,
   });
 
-  const requestClipJob = useMutation({
-    mutationFn: ({
-      narrationId,
-      alignmentId,
-      occurrenceIds,
-    }: {
-      narrationId: string;
-      alignmentId: string;
-      occurrenceIds: string[];
-    }) =>
-      request<{ job: AudioJob; replay: boolean }>(`/admin/lessons/${lessonId}/texts/${textId}/clip-jobs`, {
-        method: 'POST',
-        headers: { 'Idempotency-Key': createIdempotencyKey() },
-        body: JSON.stringify({ narrationId, alignmentId, occurrenceIds }),
-      }),
-  });
-
-  const approveRelease = useMutation({
-    mutationFn: ({
-      contentRevisionId,
-      narrationId,
-      alignmentId,
-    }: {
-      contentRevisionId: string;
-      narrationId: string;
-      alignmentId: string;
-    }) =>
-      request<{ release: { id: string } }>(`/admin/lessons/${lessonId}/texts/${textId}/releases`, {
-        method: 'POST',
-        body: JSON.stringify({ contentRevisionId, narrationId, alignmentId }),
-      }),
-    onSuccess: invalidateWorkspace,
-  });
-
-  return {
-    saveContentRevision,
-    requestNarrationJob,
-    setSelection,
-    setTranslations,
-    requestClipJob,
-    approveRelease,
-  };
+  return { saveContentRevision, requestNarrationJob, setSelection, setTranslations };
 }

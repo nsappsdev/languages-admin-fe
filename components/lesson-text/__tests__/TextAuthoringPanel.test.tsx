@@ -30,7 +30,7 @@ function createWrapper() {
 /** A tiny in-memory fake server so refetches after mutations see updated state. */
 function createFakeServer() {
   const state = {
-    contentRevision: null as null | { id: string; text: string },
+    contentRevision: { id: 'rev-1', text: 'Hello world.' } as null | { id: string; text: string },
     narration: null as null | { id: string; assetId: string; provider: string; model: string; voiceId: string; createdAt: string },
     alignmentId: null as string | null,
     entries: {} as Record<string, { selected: boolean; translations: { languageCode: string; translation: string }[]; clipAssetId: string | null }>,
@@ -47,11 +47,9 @@ function createFakeServer() {
           id: 'item-1',
           lessonId: 'lesson-1',
           draftVersion: 1,
-          legacyText: 'Hello world.',
           contentRevision: state.contentRevision,
           narration: state.narration,
           alignmentSummary: state.alignmentId ? { id: state.alignmentId, status: 'OK' } : null,
-          approvedTextReleaseId: null,
           audioGenerationConfigured: true,
         },
       });
@@ -119,17 +117,6 @@ function createFakeServer() {
       return jsonResponse(200, { entry: {} });
     }
 
-    if (url.includes('/clip-jobs') && method === 'POST') {
-      const body = JSON.parse(String(init?.body ?? '{}'));
-      (createFakeServer as unknown as { lastClipRequestOccurrenceIds?: string[] }).lastClipRequestOccurrenceIds = body.occurrenceIds;
-      state.entries[OCCURRENCE_ID].clipAssetId = 'asset-clip-1';
-      return jsonResponse(202, { job: { id: 'job-clip-1', status: 'QUEUED' }, replay: false });
-    }
-
-    if (url.includes('/audio-jobs/job-clip-1') && method === 'GET') {
-      return jsonResponse(200, { job: { id: 'job-clip-1', textId: 'item-1', kind: 'EXTRACT_CLIPS', status: 'SUCCEEDED', attempt: 1, resultAssetId: null, resultId: null, error: null } });
-    }
-
     if (url.includes('/audio-assets/') && url.includes('/content')) {
       return jsonResponse(200, {});
     }
@@ -147,14 +134,11 @@ function createFakeServer() {
           selectedMissingTranslationCount: selected && !hasTranslation ? 1 : 0,
           selectedMissingClipCount: selected && !hasClip ? 1 : 0,
           eligibleEntryIds: selected && hasTranslation && hasClip ? ['entry-1'] : [],
-          readyForApproval: Boolean(state.narration) && (!selected || (hasTranslation && hasClip)),
+          canPublish: Boolean(state.narration) && (!selected || hasTranslation),
+          readyForPublication: Boolean(state.narration) && (!selected || (hasTranslation && hasClip)),
           reasonCodes: !state.narration ? ['NARRATION_MISSING'] : !selected ? ['NO_WORDS_SELECTED'] : [],
         },
       });
-    }
-
-    if (url.includes('/releases') && method === 'POST') {
-      return jsonResponse(201, { release: { id: 'release-1' } });
     }
 
     throw new Error(`Unhandled fake server request: ${method} ${url}`);
@@ -171,110 +155,45 @@ describe('TextAuthoringPanel', () => {
     global.fetch = fetchMock;
   });
 
-  it('drives the full workflow: disabled-until-saved, unchecked-by-default selection, scoped translation, selected-only extraction, gated approval', async () => {
+  it('saves and explicitly generates, selects one occurrence, and saves an Armenian translation without separate approval or clip actions', async () => {
     const server = createFakeServer();
-    fetchMock.mockImplementation(((input: RequestInfo | URL, init?: RequestInit) =>
-      server.handle(typeof input === 'string' ? input : input.toString(), init)) as typeof fetch);
-
+    fetchMock.mockImplementation(((input: RequestInfo | URL, init?: RequestInit) => server.handle(String(input), init)) as typeof fetch);
+    const onBusyChange = jest.fn();
     const user = userEvent.setup();
-    render(<TextAuthoringPanel lessonId="lesson-1" textId="item-1" />, { wrapper: createWrapper() });
-
-    // --- Generate is disabled until text is saved ---
-    const generateButton = await screen.findByRole('button', { name: /generate narration/i });
-    expect(generateButton).toBeDisabled();
-    expect(screen.getByText(/save the text before generating narration/i)).toBeInTheDocument();
-
-    const saveTextButton = screen.getByRole('button', { name: /save text/i });
-    expect(saveTextButton).not.toBeDisabled(); // the first V2 revision can preserve legacy text
-
-    const textarea = screen.getByDisplayValue('Hello world.');
-    await user.clear(textarea);
-    await user.type(textarea, 'Hello world!');
-
-    await user.click(saveTextButton);
-    await waitFor(() => expect(generateButton).not.toBeDisabled());
-
-    // --- Generate narration; job resolves immediately in the fake server ---
-    await user.click(generateButton);
-
-    // --- Occurrences render unchecked by default ---
-    const checkbox = await screen.findByRole('button', { name: /select occurrence "hello"/i });
-    expect(checkbox.getAttribute('aria-pressed')).toBe('false');
-
-    // --- Select the occurrence ---
-    await user.click(checkbox);
-    await waitFor(() => expect(checkbox.getAttribute('aria-pressed')).toBe('true'));
-
-    // --- Readiness shows selected-but-incomplete ---
-    await waitFor(() => {
-      expect(screen.getByText(/missing translation: 1/i)).toBeInTheDocument();
-    });
-    expect(screen.getByRole('button', { name: /approve text version/i })).toBeDisabled();
-
-    // --- Translation is saved to this entry only (PATCH .../vocabulary/entry-1) ---
-    const translationInput = screen.getByRole('textbox', { name: /translation for hello at position 0/i });
-    await user.click(screen.getByText('Full narration'));
-    await user.click(screen.getByRole('button', { name: /show occurrence "hello"/i }));
-    expect(document.activeElement).toBe(translationInput);
-    await user.click(screen.getByText('Full narration'));
-    await user.click(screen.getByRole('button', { name: /show occurrence "hello"/i }));
-    expect(document.activeElement).toBe(translationInput);
-    await user.type(translationInput, 'բարև');
+    render(<TextAuthoringPanel lessonId="lesson-1" textId="item-1" onBusyChange={onBusyChange} />, { wrapper: createWrapper() });
+    const generate = await screen.findByRole('button', { name: 'Save and generate narration' });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('narration-jobs'))).toBe(false);
+    await user.click(generate);
+    const select = await screen.findByRole('button', { name: /select occurrence "hello"/i });
+    expect(select.getAttribute('aria-pressed')).toBe('false');
+    await user.click(select);
+    const input = await screen.findByRole('textbox', { name: /translation for hello/i });
+    await user.type(input, 'բարեւ');
+    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith('item-1', true));
     await user.click(screen.getByRole('button', { name: /save translation/i }));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/admin/lessons/lesson-1/texts/item-1/vocabulary/entry-1'),
-        expect.objectContaining({ method: 'PATCH' }),
-      );
-    });
-
-    // --- Extract clips only requests the selected occurrence id, not "all" ---
-    const extractButton = await screen.findByRole('button', { name: /extract missing clips/i });
-    await user.click(extractButton);
-
-    await waitFor(() => {
-      const clipCall = fetchMock.mock.calls.find(([u]) => String(u).includes('/clip-jobs'));
-      expect(clipCall).toBeTruthy();
-      const body = JSON.parse(String((clipCall as [unknown, RequestInit])[1]?.body));
-      expect(body.occurrenceIds).toEqual([server.OCCURRENCE_ID]);
-    });
-
-    // --- Once translated + clipped, approval becomes available ---
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /approve text version/i })).not.toBeDisabled();
-    });
-
-    await user.click(screen.getByRole('button', { name: /approve text version/i }));
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/admin/lessons/lesson-1/texts/item-1/releases'),
-        expect.objectContaining({ method: 'POST' }),
-      );
-    });
+    await waitFor(() => expect(server.state.entries['occ-1'].translations).toEqual([{ languageCode: 'hy', translation: 'բարեւ' }]));
+    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith('item-1', false));
+    expect(await screen.findByText('Ready to publish')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /approve|extract/i })).toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => /clip-jobs|releases/.test(String(url)))).toBe(false);
+    const text = screen.getByRole('textbox', { name: 'Full text' });
+    await user.type(text, ' Edited.');
+    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith('item-1', true));
+    expect(screen.getByRole('button', { name: /show occurrence/i })).toBeDisabled();
   });
 
-  it('explains why generation is disabled when the provider is not configured', async () => {
-    fetchMock.mockImplementation((async () =>
-      jsonResponse(200, {
-        text: {
-          id: 'item-1',
-          lessonId: 'lesson-1',
-          draftVersion: 1,
-          legacyText: 'Hi.',
-          contentRevision: { id: 'rev-1', textId: 'item-1', sequence: 1, text: 'Hi.', textSha256: 'x', sourceLanguage: 'en' },
-          narration: null,
-          alignmentSummary: null,
-          approvedTextReleaseId: null,
-          audioGenerationConfigured: false,
-        },
-      })) as unknown as typeof fetch);
-
+  it('keeps generation disabled when ElevenLabs is not configured', async () => {
+    const server = createFakeServer();
+    fetchMock.mockImplementation((async (input, init) => {
+      const result = await server.handle(String(input), init);
+      if (String(input).endsWith('/texts/item-1')) {
+        const body = await result.json(); body.text.audioGenerationConfigured = false;
+        return jsonResponse(200, body);
+      }
+      return result;
+    }) as typeof fetch);
     render(<TextAuthoringPanel lessonId="lesson-1" textId="item-1" />, { wrapper: createWrapper() });
-
-    await waitFor(() => {
-      expect(screen.getByText(/not configured on this server/i)).toBeInTheDocument();
-    });
-    expect(screen.getByRole('button', { name: /generate narration/i })).toBeDisabled();
+    expect(await screen.findByText(/ElevenLabs narration is not configured/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save and generate narration' })).toBeDisabled();
   });
 });

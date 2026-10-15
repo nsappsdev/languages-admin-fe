@@ -3,6 +3,10 @@
 import { useAuth } from '../components/providers/AuthProvider';
 import { API_BASE_URL } from '../lib/config';
 
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public details: unknown) { super(message); }
+}
+
 export function useApiClient() {
   const { token, logout } = useAuth();
 
@@ -38,7 +42,7 @@ export function useApiClient() {
         logout();
       }
 
-      throw new Error(message);
+      throw new ApiError(message, response.status, payload);
     }
     return payload as T;
   };

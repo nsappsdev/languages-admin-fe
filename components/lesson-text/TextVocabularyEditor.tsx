@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useAudioAsset } from '../../hooks/useAudioAsset';
 import { OccurrenceSentence, WordOccurrenceDto } from '../../lib/textAuthoringTypes';
 
-const TARGET_LANGUAGE = 'am';
 
 /** Clip controls stay small; duration comes from the actual authenticated audio. */
 function ClipPlayer({ assetId, occurrenceId, word }: { assetId: string; occurrenceId: string; word: string }) {
@@ -33,7 +32,7 @@ function ClipPlayer({ assetId, occurrenceId, word }: { assetId: string; occurren
   return (
     <>
       <button type="button" onClick={() => void togglePlayback()} disabled={!url || isLoading || Boolean(error)}
-        aria-label={`${playing ? 'Pause' : 'Play'} clip for ${word} (${occurrenceId})`}
+        aria-label={`${playing ? 'Pause' : 'Play'} clip for ${word} `}
         title={playing ? 'Pause clip' : 'Play extracted clip'}
         className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:border-brand-300 hover:text-brand-700 focus-visible:outline-brand-500 disabled:opacity-50">
         <span aria-hidden="true">{playing ? 'Ⅱ' : '▶'}</span>
@@ -55,14 +54,13 @@ function ClipPlayer({ assetId, occurrenceId, word }: { assetId: string; occurren
 interface TextVocabularyEditorProps {
   selectedOccurrences: WordOccurrenceDto[];
   onSaveTranslation: (entryId: string, translation: string) => void;
-  onExtractClips: (occurrenceIds: string[]) => void;
-  isExtracting: boolean;
   savingEntryId: string | null;
   sentences: OccurrenceSentence[];
   focusedOccurrenceId: string | null;
   focusRequest: number;
   onRemove: (occurrenceId: string) => void;
   isSelecting: boolean;
+  onDirtyChange?: (occurrenceId: string, dirty: boolean) => void;
 }
 
 function OccurrenceRow({
@@ -75,6 +73,7 @@ function OccurrenceRow({
   focusRequest,
   onRemove,
   isSelecting,
+  onDirtyChange,
 }: {
   occurrence: WordOccurrenceDto;
   onSaveTranslation: (entryId: string, translation: string) => void;
@@ -85,14 +84,20 @@ function OccurrenceRow({
   focusRequest: number;
   onRemove: (occurrenceId: string) => void;
   isSelecting: boolean;
+  onDirtyChange?: (occurrenceId: string, dirty: boolean) => void;
 }) {
-  const existing = occurrence.translations.find((t) => t.languageCode === TARGET_LANGUAGE);
+  const existing = occurrence.translations.find((t) => ['hy', 'am'].includes(t.languageCode));
   const [draft, setDraft] = useState(existing?.translation ?? '');
   const rowRef = useRef<HTMLDivElement>(null);
   const translationRef = useRef<HTMLInputElement>(null);
   const missingTranslation = !existing?.translation.trim();
   const hasChanged = draft !== (existing?.translation ?? '');
   const saving = savingEntryId === occurrence.entryId;
+
+  useEffect(() => {
+    onDirtyChange?.(occurrence.id, hasChanged || saving);
+    return () => onDirtyChange?.(occurrence.id, false);
+  }, [onDirtyChange, occurrence.id, hasChanged, saving]);
 
   useEffect(() => {
     if (focused) {
@@ -140,7 +145,7 @@ function OccurrenceRow({
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        {occurrence.clipAssetId ? <ClipPlayer key={occurrence.clipAssetId} assetId={occurrence.clipAssetId} occurrenceId={occurrence.id} word={occurrence.text} /> : <span className="text-xs text-amber-700">Clip missing</span>}
+        {occurrence.clipAssetId ? <ClipPlayer key={occurrence.clipAssetId} assetId={occurrence.clipAssetId} occurrenceId={occurrence.id} word={occurrence.text} /> : <span className="text-xs text-amber-700">Clip will be prepared when publishing</span>}
         {hasChanged ? <span className="text-[11px] text-amber-700">Unsaved translation</span> : missingTranslation ? <span className="text-[11px] text-amber-700">Translation missing</span> : null}
       </div>
     </div>
@@ -155,16 +160,14 @@ function OccurrenceRow({
 export function TextVocabularyEditor({
   selectedOccurrences,
   onSaveTranslation,
-  onExtractClips,
-  isExtracting,
   savingEntryId,
   sentences,
   focusedOccurrenceId,
   focusRequest,
   onRemove,
   isSelecting,
+  onDirtyChange,
 }: TextVocabularyEditorProps) {
-  const missingClipIds = selectedOccurrences.filter((o) => !o.clipAssetId).map((o) => o.id);
 
   if (!selectedOccurrences.length) {
     return <p className="px-3 py-6 text-sm leading-relaxed text-slate-500">Choose a word in a sentence to add its Armenian translation and audio clip here.</p>;
@@ -174,14 +177,7 @@ export function TextVocabularyEditor({
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 pb-3">
         <span className="text-xs text-slate-500">{selectedOccurrences.length} selected</span>
-        <button
-          type="button"
-          onClick={() => onExtractClips(missingClipIds)}
-          disabled={!missingClipIds.length || isExtracting}
-          className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {isExtracting ? 'Extracting…' : `Extract missing clips (${missingClipIds.length})`}
-        </button>
+
       </div>
       <div className="divide-y divide-slate-100">{selectedOccurrences.map((occurrence) => (
         <OccurrenceRow
@@ -195,6 +191,7 @@ export function TextVocabularyEditor({
           focusRequest={focusRequest}
           onRemove={onRemove}
           isSelecting={isSelecting}
+          onDirtyChange={onDirtyChange}
         />
       ))}</div>
     </div>
