@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../../components/providers/AuthProvider';
 
 const LINKS = [
+  { href: '/dashboard/vocabulary', label: 'Vocabulary library', desc: 'Saved clips, lesson links, preferred recordings' },
   { href: '/dashboard/settings', label: 'Settings', desc: 'App settings, fonts, repetitions' },
 ];
 

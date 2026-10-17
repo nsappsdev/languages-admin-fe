@@ -5,6 +5,7 @@ import { useAuth } from '../providers/AuthProvider';
 
 const NAV_LINKS = [
   { href: '/dashboard/lessons', label: 'Lessons' },
+  { href: '/dashboard/vocabulary', label: 'Vocabulary' },
   { href: '/dashboard/learners', label: 'Learners' },
   { href: '/dashboard/settings', label: 'Settings' },
 ];

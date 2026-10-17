@@ -13,3 +13,11 @@ For manual phrases, choose **Select a phrase**, click its first and last words i
 Lesson details, individual texts, and completed vocabulary entries can collapse. Search words or Armenian translations, or show only entries missing translations. Filtering and collapsing preserve unsaved translation drafts and keep publication blocked until they are saved.
 
 The matching backend branch requires migration `20261017090000_vocabulary_phrase_ranges` before these features are used. Existing single-word selections and the schema-version-2 learner API remain supported.
+
+## Shared vocabulary library
+
+Open **Vocabulary** in the desktop navigation, or **More → Vocabulary library** on a phone. Search English words/phrases or Armenian meanings, listen to saved recordings, and expand **Used in … lessons** for source sentences and lesson links. Earlier publication examples are labeled.
+
+Publishing indexes the existing clip files automatically, without generating or copying audio. Meanings are grouped by the saved Armenian translation; different meanings and voices remain separate. **Use for vocabulary practice** makes a recording the preferred clip for that meaning and voice in the learner's standalone vocabulary screen. **Use each lesson’s recording** restores contextual clips. These choices take effect when the learner refreshes their vocabulary list; full lesson playback and pinned lesson publications are unchanged. Unavailable preferred recordings fall back to the lesson clip.
+
+Apply backend migration `20261017140000_shared_vocabulary_library`, then run the documented backend backfill to include already published lessons. The backfill references existing assets and makes no speech-provider calls.
