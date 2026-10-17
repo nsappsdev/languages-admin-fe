@@ -199,7 +199,7 @@ export function TextVocabularyEditor({
         </div>
       </div>
       {!visibleCount ? <p role="status" className="py-4 text-sm text-slate-600">No learning entries match this filter.</p> : null}
-      <div className="max-h-[34rem] overflow-y-auto overscroll-contain divide-y divide-slate-200">{selectedOccurrences.map((occurrence) => (
+      <div className="max-h-[34rem] overflow-y-auto overscroll-contain [contain:layout_paint] divide-y divide-slate-200">{selectedOccurrences.map((occurrence) => (
         <div key={`${occurrence.id}:${occurrence.endOccurrenceId ?? ''}:${armenianTranslation(occurrence)}`} hidden={!isVisible(occurrence)}>
         <OccurrenceRow
           occurrence={occurrence}

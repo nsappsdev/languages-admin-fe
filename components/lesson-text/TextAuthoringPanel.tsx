@@ -105,7 +105,7 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
     <fieldset disabled={textDirty || generating || mutations.saveContentRevision.isPending || mutations.importVocabulary.isPending || importDirty} className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
       <section aria-label="Aligned sentences" className="min-w-0">
         <h4 className="mb-3 text-sm font-semibold text-slate-800">Text</h4>
-        <div className="max-h-[40rem] overflow-y-auto overscroll-contain pr-2">
+        <div className="max-h-[40rem] overflow-y-auto overscroll-contain [contain:layout_paint] pr-2">
         {occurrencesQuery.data ? <OccurrenceSelection key={alignmentId} occurrences={occurrencesQuery.data}
           onDraftChange={setPhraseDirty}
           onCreatePhrase={async (first, last) => {
