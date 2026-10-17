@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAudioAsset } from '../../hooks/useAudioAsset';
 import { OccurrenceSentence, WordOccurrenceDto } from '../../lib/textAuthoringTypes';
+import { armenianTranslation } from '../../lib/vocabularyImport';
 
 
 /** Clip controls stay small; duration comes from the actual authenticated audio. */
@@ -88,7 +89,7 @@ function OccurrenceRow({
 }) {
   const existing = occurrence.translations.find((t) => ['hy', 'am'].includes(t.languageCode));
   const [draft, setDraft] = useState(existing?.translation ?? '');
-  const rowRef = useRef<HTMLDivElement>(null);
+  const rowRef = useRef<HTMLDetailsElement>(null);
   const translationRef = useRef<HTMLInputElement>(null);
   const missingTranslation = !existing?.translation.trim();
   const hasChanged = draft !== (existing?.translation ?? '');
@@ -101,21 +102,28 @@ function OccurrenceRow({
 
   useEffect(() => {
     if (focused) {
+      if (rowRef.current) rowRef.current.open = true;
       rowRef.current?.scrollIntoView?.({ block: 'nearest' });
       translationRef.current?.focus({ preventScroll: true });
     }
   }, [focused, focusRequest]);
 
   return (
-    <div ref={rowRef} data-testid={`vocabulary-${occurrence.id}`} className={`space-y-2 border-l-2 px-3 py-3 transition-colors ${focused ? 'border-brand-500 bg-brand-50/60' : 'border-transparent hover:bg-slate-50'}`}>
+    <details ref={rowRef} open={missingTranslation || focused || hasChanged || saving || undefined} data-testid={`vocabulary-${occurrence.id}`} className={`group px-3 py-1 ${focused ? 'bg-brand-50' : 'hover:bg-slate-50'}`}>
+      <summary className="cursor-pointer py-3 text-sm marker:text-slate-500 focus-visible:outline-brand-500">
+        <span className="ml-1 font-semibold text-slate-900">{occurrence.text}</span>
+        <span className="ml-2 text-slate-600">{hasChanged ? 'Unsaved translation' : existing?.translation || 'Add translation'}</span>
+        {occurrence.endOccurrenceId ? <span className="ml-2 text-xs text-slate-600">Phrase</span> : null}
+      </summary>
+      <div className="space-y-2 pb-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-baseline gap-2">
           <h4 className="break-words text-sm font-semibold text-slate-900">{occurrence.text}</h4>
           <span className="shrink-0 text-[11px] text-slate-400" title={`Sentence ${sentenceNumber}, occurrence ${occurrence.ordinal + 1}`}>S{sentenceNumber} · #{occurrence.ordinal + 1}</span>
         </div>
         <button type="button" onClick={() => onRemove(occurrence.id)} disabled={isSelecting}
-          className="flex size-7 shrink-0 items-center justify-center rounded text-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-brand-500 disabled:opacity-50"
-          title="Remove learning word" aria-label={`Remove occurrence "${occurrence.text}" (position ${occurrence.ordinal})`}>×</button>
+          className="shrink-0 rounded px-2 py-2 text-xs text-slate-600 hover:bg-rose-50 hover:text-rose-700 focus-visible:outline-brand-500 disabled:opacity-50"
+          title="Remove learning word" aria-label={`Remove occurrence "${occurrence.text}" (position ${occurrence.ordinal})`}>Remove</button>
       </div>
       {sentence ? <p className="truncate text-[11px] text-slate-500" title={sentence.text}>{sentence.text}</p> : null}
       <div className="flex items-center gap-1.5">
@@ -148,7 +156,8 @@ function OccurrenceRow({
         {occurrence.clipAssetId ? <ClipPlayer key={occurrence.clipAssetId} assetId={occurrence.clipAssetId} occurrenceId={occurrence.id} word={occurrence.text} /> : <span className="text-xs text-amber-700">Clip will be prepared when publishing</span>}
         {hasChanged ? <span className="text-[11px] text-amber-700">Unsaved translation</span> : missingTranslation ? <span className="text-[11px] text-amber-700">Translation missing</span> : null}
       </div>
-    </div>
+      </div>
+    </details>
   );
 }
 
@@ -168,20 +177,31 @@ export function TextVocabularyEditor({
   isSelecting,
   onDirtyChange,
 }: TextVocabularyEditorProps) {
+  const [search, setSearch] = useState({ value: '', focusRequest });
+  const [missingOnly, setMissingOnly] = useState(false);
+  const query = (search.focusRequest === focusRequest ? search.value : '').trim().toLocaleLowerCase();
+  const isVisible = (word: WordOccurrenceDto) => (word.id === focusedOccurrenceId && search.focusRequest !== focusRequest) ||
+    ((!missingOnly || !armenianTranslation(word).trim()) && `${word.text} ${armenianTranslation(word)}`.toLocaleLowerCase().includes(query));
+  const visibleCount = selectedOccurrences.filter(isVisible).length;
 
   if (!selectedOccurrences.length) {
-    return <p className="px-3 py-6 text-sm leading-relaxed text-slate-500">Choose a word in a sentence to add its Armenian translation and audio clip here.</p>;
+    return <p className="px-3 py-6 text-sm leading-relaxed text-slate-500">Select words or a phrase in the text, or import a list with Armenian translations.</p>;
   }
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 pb-3">
-        <span className="text-xs text-slate-500">{selectedOccurrences.length} selected</span>
-
+      <div className="space-y-3 border-b border-slate-200 pb-3">
+        <input type="search" aria-label="Search learning words and translations" placeholder="Find a word or translation" value={search.focusRequest === focusRequest ? search.value : ''}
+          onChange={event => setSearch({ value: event.target.value, focusRequest })} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-brand-500" />
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+          <span>{selectedOccurrences.length} selected · {selectedOccurrences.filter(word => !armenianTranslation(word).trim()).length} need translation</span>
+          <label className="flex items-center gap-2 py-1"><input type="checkbox" checked={missingOnly} onChange={event => setMissingOnly(event.target.checked)} />Missing translations only</label>
+        </div>
       </div>
-      <div className="divide-y divide-slate-100">{selectedOccurrences.map((occurrence) => (
+      {!visibleCount ? <p role="status" className="py-4 text-sm text-slate-600">No learning entries match this filter.</p> : null}
+      <div className="max-h-[34rem] overflow-y-auto overscroll-contain divide-y divide-slate-200">{selectedOccurrences.map((occurrence) => (
+        <div key={`${occurrence.id}:${occurrence.endOccurrenceId ?? ''}:${armenianTranslation(occurrence)}`} hidden={!isVisible(occurrence)}>
         <OccurrenceRow
-          key={occurrence.id}
           occurrence={occurrence}
           onSaveTranslation={onSaveTranslation}
           savingEntryId={savingEntryId}
@@ -193,6 +213,7 @@ export function TextVocabularyEditor({
           isSelecting={isSelecting}
           onDirtyChange={onDirtyChange}
         />
+        </div>
       ))}</div>
     </div>
   );

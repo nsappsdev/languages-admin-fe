@@ -53,3 +53,24 @@ it('saves the specific occurrence translation with Enter', async () => {
   await userEvent.type(input, 'կատվիկ{Enter}');
   expect(onSaveTranslation).toHaveBeenCalledWith('entry-first', 'կատվիկ');
 });
+
+it('keeps translation drafts and the dirty signal when filtering hides their row', async () => {
+  const dirty = jest.fn();
+  render(<TextVocabularyEditor selectedOccurrences={[occurrence]} sentences={[]} onSaveTranslation={jest.fn()} savingEntryId={null}
+    focusedOccurrenceId={null} focusRequest={0} onRemove={jest.fn()} isSelecting={false} onDirtyChange={dirty} />);
+  const input = screen.getByRole('textbox', { name: /translation for cat/i });
+  await userEvent.clear(input); await userEvent.type(input, 'կատվիկ');
+  await userEvent.type(screen.getByRole('searchbox'), 'unmatched');
+  expect(screen.getByTestId('vocabulary-cat-first').parentElement).toHaveAttribute('hidden');
+  expect(dirty).toHaveBeenLastCalledWith('cat-first', true);
+  await userEvent.clear(screen.getByRole('searchbox'));
+  expect(screen.getByRole('textbox', { name: /translation for cat/i })).toHaveValue('կատվիկ');
+});
+
+it('shows a newly imported translation instead of a stale local input value', () => {
+  const props = { selectedOccurrences: [occurrence], sentences: [], onSaveTranslation: jest.fn(), savingEntryId: null,
+    focusedOccurrenceId: null, focusRequest: 0, onRemove: jest.fn(), isSelecting: false };
+  const view = render(<TextVocabularyEditor {...props} />);
+  view.rerender(<TextVocabularyEditor {...props} selectedOccurrences={[{ ...occurrence, translations: [{ id: 'changed', languageCode: 'hy', translation: 'կատվիկ' }] }]} />);
+  expect(screen.getByRole('textbox', { name: /translation for cat/i })).toHaveValue('կատվիկ');
+});

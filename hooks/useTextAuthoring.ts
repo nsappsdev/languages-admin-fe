@@ -87,7 +87,7 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
       changes,
     }: {
       alignmentId: string;
-      changes: Array<{ occurrenceId: string; selected: boolean }>;
+      changes: Array<{ occurrenceId: string; endOccurrenceId?: string | null; selected: boolean }>;
     }) =>
       request<{ entries: TextVocabularyEntryDto[] }>(`/admin/lessons/${lessonId}/texts/${textId}/selection`, {
         method: 'PATCH',
@@ -111,5 +111,13 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
     onSuccess: invalidateSelectionState,
   });
 
-  return { saveContentRevision, requestNarrationJob, setSelection, setTranslations };
+  const importVocabulary = useMutation({
+    mutationFn: (input: { alignmentId: string; expectedDraftVersion: number; entries: Array<{ occurrenceId: string; endOccurrenceId?: string | null; translation: string }> }) =>
+      request<{ importedCount: number }>(`/admin/lessons/${lessonId}/texts/${textId}/vocabulary/import`, {
+        method: 'POST', body: JSON.stringify(input),
+      }),
+    onSuccess: invalidateSelectionState,
+  });
+
+  return { saveContentRevision, requestNarrationJob, setSelection, setTranslations, importVocabulary };
 }
