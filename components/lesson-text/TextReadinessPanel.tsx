@@ -6,7 +6,7 @@ const REASONS: Record<string, string> = {
   NARRATION_IN_PROGRESS: 'Narration is being generated.',
   ALIGNMENT_MISSING: 'Aligned words will appear after narration is generated.',
   ALIGNMENT_NEEDS_REVIEW: 'The narration could not be aligned reliably. Regenerate it before publishing.',
-  SELECTED_MISSING_TRANSLATION: 'Add an Armenian translation for every selected word.',
+  SELECTED_MISSING_TRANSLATION: 'Add an Armenian translation for every selected word or phrase.',
 };
 export function TextReadinessPanel({ readiness }: { readiness: TextReadiness | undefined }) {
   if (!readiness) return <p className="text-xs text-slate-500">Checking readiness…</p>;
@@ -14,8 +14,8 @@ export function TextReadinessPanel({ readiness }: { readiness: TextReadiness | u
     <p className={`text-sm font-semibold ${readiness.canPublish ? 'text-emerald-700' : 'text-amber-800'}`}>
       {readiness.canPublish ? 'Ready to publish' : 'Complete this text before publishing'}
     </p>
-    <p className="text-xs text-slate-600">{readiness.selectedCount} learning words · {readiness.selectedMissingTranslationCount} missing Armenian translations</p>
-    {readiness.selectedMissingClipCount > 0 ? <p className="text-xs text-slate-500">Publishing will extract {readiness.selectedMissingClipCount} word clips from this narration.</p> : null}
+    <p className="text-xs text-slate-600">{readiness.selectedCount} learning entries · {readiness.selectedMissingTranslationCount} missing Armenian translations</p>
+    {readiness.selectedMissingClipCount > 0 ? <p className="text-xs text-slate-500">Publishing will extract {readiness.selectedMissingClipCount} word or phrase clips from this narration.</p> : null}
     <ul className="space-y-1 text-xs text-amber-800">{readiness.reasonCodes.filter(code => REASONS[code]).map(code => <li key={code}>{REASONS[code]}</li>)}</ul>
   </div>;
 }

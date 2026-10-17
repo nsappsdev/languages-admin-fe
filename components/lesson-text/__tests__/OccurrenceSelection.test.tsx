@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OccurrenceSelection } from '../OccurrenceSelection';
 import { OccurrencesResponse, WordOccurrenceDto } from '../../../lib/textAuthoringTypes';
+import { importFixture } from '../../../lib/testing/vocabularyFixture';
 
 const word = (id: string, ordinal: number, sentenceId: string, charStart: number, selected: boolean): WordOccurrenceDto => ({
   id, ordinal, sentenceId, charStart, charEnd: charStart + 3, text: 'cat', selected,
@@ -63,4 +64,25 @@ it('keeps immediately trailing punctuation with its word without changing select
   expect(last.textContent).toBe('cat');
   await userEvent.click(last);
   expect(onToggle).toHaveBeenCalledWith('cat-two', true);
+});
+
+it('selects a phrase by its first and last words without making separate word selections', async () => {
+  const create = jest.fn().mockResolvedValue(undefined), toggle = jest.fn();
+  render(<OccurrenceSelection occurrences={importFixture} pendingOccurrenceId={null} focusedOccurrenceId={null} onToggle={toggle} onFocusOccurrence={jest.fn()} onCreatePhrase={create} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Select a phrase' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Select occurrence "look" (position 1)' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Select occurrence "after" (position 2)' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Add phrase' }));
+  expect(create).toHaveBeenCalledWith('word-1', 'word-2');
+  expect(toggle).not.toHaveBeenCalled();
+});
+
+it('displays a saved phrase once and focuses its shared translation', async () => {
+  const data = JSON.parse(JSON.stringify(importFixture)) as typeof importFixture;
+  Object.assign(data.occurrences[1], { selected: true, endOccurrenceId: 'word-2' });
+  const focus = jest.fn();
+  render(<OccurrenceSelection occurrences={data} pendingOccurrenceId={null} focusedOccurrenceId={null} onToggle={jest.fn()} onFocusOccurrence={focus} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Show occurrence "look after" (position 1)' }));
+  expect(focus).toHaveBeenCalledWith('word-1');
+  expect(screen.queryByRole('button', { name: 'Select occurrence "after" (position 2)' })).not.toBeInTheDocument();
 });

@@ -75,6 +75,7 @@ export interface WordOccurrenceDto {
   cutEndSample: number | null;
   mappingStatus: 'MAPPED' | 'UNMAPPED';
   entryId: string | null;
+  endOccurrenceId?: string | null;
   selected: boolean;
   translations: TextVocabularyTranslationDto[];
   clipAssetId: string | null;
@@ -82,6 +83,7 @@ export interface WordOccurrenceDto {
 
 export interface OccurrencesResponse {
   alignmentId: string;
+  draftVersion?: number;
   status: AlignmentStatus;
   sentences: OccurrenceSentence[];
   occurrences: WordOccurrenceDto[];
@@ -97,6 +99,7 @@ export interface TextVocabularyTranslationDto {
 export interface TextVocabularyEntryDto {
   id: string;
   occurrenceId: string;
+  endOccurrenceId?: string | null;
   selected: boolean;
   translations: TextVocabularyTranslationDto[];
 }
