@@ -16,7 +16,7 @@ export function VocabularyTermDetail({ termId }: { termId: string }) {
     try {
       await preference.mutateAsync({ meaningId: meaning.id, voiceId, recordingId,
         expectedRecordingId: meaning.preferences.find(p => p.voiceId === voiceId)?.recordingId ?? null });
-      setNotice(recordingId ? 'Preferred recording saved for this meaning and voice.' : 'Vocabulary practice will use each lesson’s original recording.');
+      setNotice(recordingId ? 'Preferred recording saved for this meaning and voice.' : 'The saved recording attached to each lesson will be used.');
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to save the preferred recording.'); }
   }
   const term = query.data;
@@ -25,7 +25,7 @@ export function VocabularyTermDetail({ termId }: { termId: string }) {
     {query.isLoading ? <p role="status">Loading recordings…</p> : query.error ? <div role="alert"><p>Unable to load this vocabulary entry.</p>
       <button onClick={() => void query.refetch()} className="mt-2 rounded border bg-white px-3 py-2">Try again</button></div> : term ? <>
       <div><h1 className="break-words text-2xl font-semibold text-slate-900">{term.text}</h1>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">Choose a saved recording for standalone vocabulary practice. It will be reused for this Armenian meaning and voice. Listening inside a lesson keeps its original recording.</p></div>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">Saved word and phrase audio is reused when preparing lesson vocabulary. Choose a preferred recording for this Armenian meaning and voice.</p></div>
       {notice ? <p role="status" className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p> : null}
       {error ? <div role="alert" className="rounded-md bg-rose-50 p-3 text-sm text-rose-800"><p>{error}</p>
         <button className="mt-2 underline" onClick={() => { setError(''); void query.refetch(); }}>Reload recordings</button></div> : null}
@@ -41,7 +41,7 @@ export function VocabularyTermDetail({ termId }: { termId: string }) {
             </div>
             <ul className="divide-y divide-slate-100">{recordings.map((recording, index) => <li key={recording.id} className="py-4 first:pt-1">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm font-medium text-slate-800">Recording {index + 1} <span className="ml-2 font-normal text-slate-500">{(recording.asset.frameCount / recording.asset.sampleRate).toFixed(2)}s</span>
+                <div className="text-sm font-medium text-slate-800">Recording {index + 1} <span className="ml-2 font-normal text-slate-500">{(recording.asset.frameCount / recording.asset.sampleRate).toFixed(2)}s · {recording.standalone ? 'Standalone word audio' : 'Saved lesson recording'}</span>
                   {preferredId === recording.id ? <span className="ml-2 text-xs font-semibold text-emerald-700">Preferred</span> : null}</div>
                 <div className="flex flex-wrap gap-2"><button disabled={!recording.available} onClick={() => setPreviewId(previewId === recording.id ? null : recording.id)}
                   aria-label={`${previewId === recording.id ? 'Close' : 'Preview'} recording ${index + 1} of ${term.text} for ${meaning.translation}`}

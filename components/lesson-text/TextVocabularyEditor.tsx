@@ -34,7 +34,7 @@ function ClipPlayer({ assetId, occurrenceId, word }: { assetId: string; occurren
     <>
       <button type="button" onClick={() => void togglePlayback()} disabled={!url || isLoading || Boolean(error)}
         aria-label={`${playing ? 'Pause' : 'Play'} clip for ${word} `}
-        title={playing ? 'Pause clip' : 'Play extracted clip'}
+        title={playing ? 'Pause clip' : 'Play saved word audio'}
         className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:border-brand-300 hover:text-brand-700 focus-visible:outline-brand-500 disabled:opacity-50">
         <span aria-hidden="true">{playing ? 'Ⅱ' : '▶'}</span>
         {duration !== null ? `${duration.toFixed(2)}s` : isLoading ? 'Loading' : 'Clip'}
@@ -122,7 +122,7 @@ function OccurrenceRow({
           <span className="shrink-0 text-[11px] text-slate-400" title={`Sentence ${sentenceNumber}, occurrence ${occurrence.ordinal + 1}`}>S{sentenceNumber} · #{occurrence.ordinal + 1}</span>
         </div>
         <button type="button" onClick={() => onRemove(occurrence.id)} disabled={isSelecting}
-          className="shrink-0 rounded px-2 py-2 text-xs text-slate-600 hover:bg-rose-50 hover:text-rose-700 focus-visible:outline-brand-500 disabled:opacity-50"
+          className="shrink-0 rounded px-2 py-2 text-xs text-rose-700 hover:bg-rose-50 focus-visible:outline-brand-500 disabled:opacity-50"
           title="Remove learning word" aria-label={`Remove occurrence "${occurrence.text}" (position ${occurrence.ordinal})`}>Remove</button>
       </div>
       {sentence ? <p className="truncate text-[11px] text-slate-500" title={sentence.text}>{sentence.text}</p> : null}
@@ -153,7 +153,7 @@ function OccurrenceRow({
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        {occurrence.clipAssetId ? <ClipPlayer key={occurrence.clipAssetId} assetId={occurrence.clipAssetId} occurrenceId={occurrence.id} word={occurrence.text} /> : <span className="text-xs text-amber-700">Clip will be prepared when publishing</span>}
+        {occurrence.clipAssetId ? <ClipPlayer key={occurrence.clipAssetId} assetId={occurrence.clipAssetId} occurrenceId={occurrence.id} word={occurrence.text} /> : <span className="text-xs text-amber-700">Prepare vocabulary audio below</span>}
         {hasChanged ? <span className="text-[11px] text-amber-700">Unsaved translation</span> : missingTranslation ? <span className="text-[11px] text-amber-700">Translation missing</span> : null}
       </div>
       </div>
