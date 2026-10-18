@@ -9,6 +9,6 @@ export function NarrationControls({ narration, activeJob }: { narration: TextNar
     {activeJob?.status === 'FAILED' ? <p role="alert" className="text-sm text-rose-700">Narration failed: {activeJob.error?.message ?? 'Please try generating again.'}</p> : null}
     {url ? <audio controls preload="metadata" className="h-10 w-full min-w-0" src={url} data-testid="narration-player" /> : <p className="text-xs text-slate-500">{narration ? 'Loading narration…' : 'No current narration yet.'}</p>}
     {error ? <p role="alert" className="text-xs text-rose-700">Could not load narration: {error}</p> : null}
-    <p className="text-xs text-slate-500">Word and phrase clips come from this recording.</p>
+    <p className="text-xs text-slate-500">Full lesson narration. Prepare word and phrase audio from the vocabulary library below.</p>
   </div>;
 }

@@ -32,9 +32,10 @@ export interface TextWorkspaceDetail {
   alignmentSummary: TextAlignmentSummary | null;
   audioGenerationConfigured: boolean;
   activeNarrationJobId?: string | null;
+  activeVocabularyJobId?: string | null;
 }
 
-export type AudioJobKind = 'GENERATE_NARRATION' | 'EXTRACT_CLIPS';
+export type AudioJobKind = 'GENERATE_NARRATION' | 'EXTRACT_CLIPS' | 'GENERATE_VOCABULARY';
 export type AudioJobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
 
 export interface AudioJobError {

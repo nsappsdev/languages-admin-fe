@@ -9,6 +9,7 @@ import { TextVocabularyEditor } from './TextVocabularyEditor';
 import { TextReadinessPanel } from './TextReadinessPanel';
 import { VocabularyImport } from './VocabularyImport';
 import { learningOccurrences } from '../../lib/vocabularyImport';
+import { VocabularyAudioControls } from './VocabularyAudioControls';
 
 export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
   lessonId: string; textId: string; onBusyChange?: (textId: string, busy: boolean) => void;
@@ -25,6 +26,7 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
   const [importOpen, setImportOpen] = useState(false);
   const [importDirty, setImportDirty] = useState(false);
   const [phraseDirty, setPhraseDirty] = useState(false);
+  const [wordAudioBusy, setWordAudioBusy] = useState(false);
   const [dirtyTranslations, setDirtyTranslations] = useState<Record<string, boolean>>({});
   const alignmentId = workspace?.alignmentSummary?.id ?? null;
   const occurrencesQuery = useTextOccurrences(lessonId, textId, alignmentId);
@@ -35,8 +37,8 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
   const textDirty = !!workspace && text !== (workspace.contentRevision?.text ?? '');
   const generating = mutations.requestNarrationJob.isPending || jobQuery.data?.job.status === 'QUEUED' || jobQuery.data?.job.status === 'RUNNING' || Boolean(workspace?.activeNarrationJobId);
   const translationsDirty = Object.values(dirtyTranslations).some(Boolean);
-  const savingVocabulary = mutations.setSelection.isPending || mutations.setTranslations.isPending || mutations.importVocabulary.isPending;
-  const busy = importDirty || phraseDirty || mutations.importVocabulary.isPending || textDirty || generating || mutations.saveContentRevision.isPending || mutations.setSelection.isPending || mutations.setTranslations.isPending || Object.values(dirtyTranslations).some(Boolean);
+  const savingVocabulary = wordAudioBusy || mutations.setSelection.isPending || mutations.setTranslations.isPending || mutations.importVocabulary.isPending;
+  const busy = wordAudioBusy || importDirty || phraseDirty || mutations.importVocabulary.isPending || textDirty || generating || mutations.saveContentRevision.isPending || mutations.setSelection.isPending || mutations.setTranslations.isPending || Object.values(dirtyTranslations).some(Boolean);
 
   useEffect(() => {
     onBusyChange?.(textId, busy);
@@ -102,7 +104,7 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
       <VocabularyImport key={alignmentId} data={occurrencesQuery.data} pending={mutations.importVocabulary.isPending} onDirtyChange={setImportDirty}
         onClose={() => { setImportOpen(false); setImportDirty(false); }} onImport={input => mutations.importVocabulary.mutateAsync(input)} />
     </fieldset> : null}
-    <fieldset disabled={textDirty || generating || mutations.saveContentRevision.isPending || mutations.importVocabulary.isPending || importDirty} className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+    <fieldset disabled={wordAudioBusy || textDirty || generating || mutations.saveContentRevision.isPending || mutations.importVocabulary.isPending || importDirty} className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
       <section aria-label="Aligned sentences" className="min-w-0">
         <h4 className="mb-3 text-sm font-semibold text-slate-800">Text</h4>
         <div className="max-h-[40rem] overflow-y-auto overscroll-contain [contain:layout_paint] pr-2">
@@ -128,6 +130,9 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
           savingEntryId={savingEntryId} onDirtyChange={onTranslationDirty} />
       </section>
     </fieldset>
+    {occurrencesQuery.data ? <VocabularyAudioControls lessonId={lessonId} textId={textId} draftVersion={workspace.draftVersion}
+      activeJobId={workspace.activeVocabularyJobId} onBusyChange={setWordAudioBusy}
+      disabled={textDirty || generating || mutations.saveContentRevision.isPending || mutations.setSelection.isPending || mutations.setTranslations.isPending || mutations.importVocabulary.isPending || translationsDirty || importDirty || phraseDirty || !readinessQuery.data?.readiness.selectedCount || !!readinessQuery.data?.readiness.selectedMissingTranslationCount} /> : null}
     <TextReadinessPanel readiness={readinessQuery.data?.readiness} />
   </section>;
 }

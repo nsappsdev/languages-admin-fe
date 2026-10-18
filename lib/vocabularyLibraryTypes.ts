@@ -4,7 +4,7 @@ export interface LibraryUsage {
   occurrenceId: string; sentence: string; current: boolean;
 }
 export interface LibraryRecording {
-  id: string; voiceId: string; model: string; asset: LibraryAsset; available: boolean; usages: LibraryUsage[];
+  id: string; voiceId: string; model: string; standalone?: boolean; asset: LibraryAsset; available: boolean; usages: LibraryUsage[];
 }
 export interface LibraryMeaning {
   id: string; translation: string; preferences: { voiceId: string; recordingId: string }[]; recordings: LibraryRecording[];
