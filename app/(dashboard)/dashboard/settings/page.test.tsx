@@ -2,12 +2,13 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import SettingsPage from './page';
 
 const mutate = jest.fn();
-const mockSettingsData = { settings: { wordRepetitionPauseMs: 800 } };
+let mockSettingsData = { settings: { wordRepetitionPauseMs: 800 } };
 jest.mock('../../../../hooks/useSettings', () => ({ useSettings: () => ({
   data: mockSettingsData, isLoading: false, isError: false,
 }) }));
 jest.mock('../../../../hooks/useSettingsMutations', () => ({ useSettingsMutations: () => ({ updateSettings: { mutate, isPending: false, isError: false } }) }));
-beforeEach(() => mutate.mockReset());
+jest.mock('../../../../components/settings/ReaderAppearance', () => ({ ReaderAppearance: () => null }));
+beforeEach(() => { mutate.mockReset(); mockSettingsData = { settings: { wordRepetitionPauseMs: 800 } }; });
 
 it('saves the 400 ms preset in milliseconds without changing repetition counts', () => {
   render(<SettingsPage />);
@@ -31,4 +32,14 @@ it('allows zero without silently replacing it with the default pause', () => {
   fireEvent.change(screen.getByRole('spinbutton', { name: 'Pause between repeated words (milliseconds)' }), { target: { value: '0' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
   expect(mutate.mock.calls[0][0].wordRepetitionPauseMs).toBe(0);
+});
+
+it('preserves unsaved playback edits when reader appearance refreshes settings', () => {
+  const view = render(<SettingsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Use 400 ms' }));
+  mockSettingsData = { settings: { wordRepetitionPauseMs: 800 } };
+  view.rerender(<SettingsPage />);
+  expect(screen.getByRole('spinbutton', { name: 'Pause between repeated words (milliseconds)' })).toHaveValue(400);
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+  expect(mutate.mock.calls[0][0].wordRepetitionPauseMs).toBe(400);
 });

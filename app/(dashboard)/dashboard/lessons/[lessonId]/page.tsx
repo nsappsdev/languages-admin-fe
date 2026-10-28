@@ -7,6 +7,7 @@ import { useLessonMutations } from '../../../../../hooks/useLessonMutations';
 import { ApiError, useApiClient } from '../../../../../hooks/useApiClient';
 import { TextAuthoringPanel } from '../../../../../components/lesson-text/TextAuthoringPanel';
 import { TextReadiness } from '../../../../../lib/textAuthoringTypes';
+import { DeleteLessonButton } from '../../../../../components/lessons/DeleteLessonButton';
 
 interface TextError { textId: string; order: number; readiness?: TextReadiness; message?: string }
 const secondary = 'rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 disabled:opacity-40';
@@ -76,9 +77,12 @@ export default function LessonDetailPage() {
   return <div className="mx-auto max-w-6xl space-y-5 pb-8">
     <div className="sticky top-0 z-20 -mx-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-2 py-3">
       <div><h1 className="text-2xl font-semibold text-slate-900">{lesson.title}</h1><p className="mt-1 text-sm text-slate-500">{lesson.currentPublicationId ? 'Published' : 'Draft'} · {lesson.items.length} texts</p></div>
+      <div className="flex flex-wrap items-center gap-2">
+      <DeleteLessonButton lessonId={lessonId} title={lesson.title} disabled={publishing || pending} />
       <button type="button" disabled={publishing || pending || unsaved} onClick={() => void publish()} className="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
         {publishing ? 'Preparing clips and publishing…' : lesson.currentPublicationId ? 'Update published lesson' : 'Publish'}
       </button>
+      </div>
     </div>
     {unsaved ? <p role="status" className="text-sm text-amber-800">Save text and translation changes, and wait for narration to finish before publishing.</p> : null}
     {publishing ? <p role="status" className="text-sm text-slate-600">Checking every text and extracting missing word clips from its narration…</p> : null}
