@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type ConfirmTone = 'danger' | 'default';
 
@@ -9,6 +9,7 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   confirmText?: string;
   description: string;
+  error?: string | null;
   isPending?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -21,13 +22,21 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   confirmText,
   description,
+  error,
   isPending = false,
   onCancel,
   onConfirm,
   title,
   tone = 'default',
 }: ConfirmDialogProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const [typedText, setTypedText] = useState('');
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialog?.showModal();
+    return () => { dialog?.close(); previousFocus?.focus(); };
+  }, []);
   const requiresTypedConfirm = Boolean(confirmText);
   const canConfirm = !isPending && (!requiresTypedConfirm || typedText === confirmText);
   const confirmClassName =
@@ -36,24 +45,28 @@ export function ConfirmDialog({
       : 'bg-brand-600 text-white hover:bg-brand-700';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-      <div
-        role="dialog"
+      <dialog
+        ref={dialogRef}
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"
+        aria-describedby="confirm-dialog-description"
+        aria-busy={isPending}
+        onCancel={event => { event.preventDefault(); if (!isPending) onCancel(); }}
+        className="w-[calc(100%_-_2rem)] max-w-md rounded-xl bg-white p-5 shadow-xl backdrop:bg-slate-950/45"
       >
         <h2 id="confirm-dialog-title" className="text-lg font-semibold text-slate-900">
           {title}
         </h2>
-        <p className="mt-2 text-sm text-slate-600">{description}</p>
+        <p id="confirm-dialog-description" className="mt-2 text-sm text-slate-600">{description}</p>
+        {error ? <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p> : null}
 
         {confirmText ? (
           <div className="mt-4">
-            <label className="block text-sm text-slate-700">
+            <label htmlFor="confirm-dialog-input" className="block text-sm text-slate-700">
               Type <span className="font-mono font-semibold">{confirmText}</span> to confirm:
             </label>
             <input
+              id="confirm-dialog-input"
               type="text"
               value={typedText}
               onChange={(event) => setTypedText(event.target.value)}
@@ -81,7 +94,6 @@ export function ConfirmDialog({
             {isPending ? 'Working...' : confirmLabel}
           </button>
         </div>
-      </div>
-    </div>
+      </dialog>
   );
 }

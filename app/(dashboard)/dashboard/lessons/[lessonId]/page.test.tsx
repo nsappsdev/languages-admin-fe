@@ -6,8 +6,9 @@ import { ApiError } from '../../../../../hooks/useApiClient';
 
 const request = jest.fn();
 const update = jest.fn();
+const replace = jest.fn();
 const lesson = { id: 'lesson-1', title: 'Test lesson', description: '', currentPublicationId: null as string | null, items: [{ id: 'text-1', text: 'A cat.', order: 0 }] };
-jest.mock('next/navigation', () => ({ useParams: () => ({ lessonId: 'lesson-1' }) }));
+jest.mock('next/navigation', () => ({ useParams: () => ({ lessonId: 'lesson-1' }), useRouter: () => ({ replace }) }));
 jest.mock('../../../../../hooks/useLesson', () => ({ useLesson: () => ({ data: { lesson }, isLoading: false }) }));
 jest.mock('../../../../../hooks/useLessonMutations', () => ({ useLessonMutations: () => ({ updateLesson: { mutateAsync: update, isPending: false }, createItem: { isPending: false } }) }));
 jest.mock('../../../../../hooks/useApiClient', () => ({ ...jest.requireActual('../../../../../hooks/useApiClient'), useApiClient: () => ({ request }) }));

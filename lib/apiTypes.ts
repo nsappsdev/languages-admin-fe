@@ -78,6 +78,13 @@ export const TRANSLATION_FONT_OPTIONS = [
 export type TranslationFontOption = (typeof TRANSLATION_FONT_OPTIONS)[number];
 
 export interface AppSettings {
+  mainTextFontId?: string | null;
+  translationFontId?: string | null;
+  mainTextLineHeight?: number;
+  translationLineHeight?: number;
+  translationGap?: number;
+  readingRowGap?: number;
+  readerFonts?: { mainText: ReaderFont | null; translation: ReaderFont | null };
   id: string;
   readingModes: ReadingModeSettings[];
   mainTextFontFamily: MainFontOption;
@@ -99,4 +106,11 @@ export interface AppSettings {
   updateMessage: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ReaderFont {
+  id: string; label: string; familyName: string; subfamilyName: string;
+  format: string; sha256: string; byteLength: number;
+  supportsEnglish: boolean; supportsArmenian: boolean;
+  archivedAt: string | null; available: boolean; inUse?: boolean;
 }
