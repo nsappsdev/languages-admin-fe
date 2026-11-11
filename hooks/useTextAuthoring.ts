@@ -72,11 +72,11 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
   });
 
   const requestNarrationJob = useMutation({
-    mutationFn: ({ contentRevisionId }: { contentRevisionId: string }) =>
+    mutationFn: (input: { contentRevisionId: string; sentenceEndOffsets?: number[]; regenerateSentenceIndex?: number; expectedDraftVersion?: number }) =>
       request<{ job: AudioJob; replay: boolean }>(`/admin/lessons/${lessonId}/texts/${textId}/narration-jobs`, {
         method: 'POST',
         headers: { 'Idempotency-Key': createIdempotencyKey() },
-        body: JSON.stringify({ contentRevisionId }),
+        body: JSON.stringify(input),
       }),
     onSuccess: invalidateSelectionState,
   });
