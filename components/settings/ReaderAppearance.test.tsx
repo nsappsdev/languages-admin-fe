@@ -13,7 +13,9 @@ jest.mock('./useFontPreview',()=>({useFontPreview:()=>({family:undefined})}));
 jest.mock('./ReaderPreview',()=>({ReaderPreview:()=> <p>Live lesson preview</p>}));
 const settings:AppSettings={...readerAppearance({}),id:'global',updatedAt:'2026-10-27T10:00:00.000Z',createdAt:'',readingModes:[],wordRepetitionPauseMs:400,
   updatePolicyEnabled:false,latestAndroidBuildNumber:0,minAndroidBuildNumber:0,latestIosBuildNumber:0,minIosBuildNumber:0,androidStoreUrl:'',iosStoreUrl:'',updateMessage:'Update available.'};
-function setup(){return render(<QueryClientProvider client={new QueryClient()}><ReaderAppearance settings={settings}/></QueryClientProvider>);}
+function setup(){const client=new QueryClient();return render(<ReaderAppearance settings={settings}/>,{
+  wrapper:({children})=><QueryClientProvider client={client}>{children}</QueryClientProvider>,
+});}
 beforeEach(()=>request.mockReset());
 
 it('saves independent gaps without sending playback or vocabulary settings',async()=>{
@@ -52,4 +54,37 @@ it('uploads a font file and explains that appearance must be saved separately',a
   await userEvent.click(screen.getByRole('button',{name:'Upload font'}));
   await waitFor(()=>expect(request).toHaveBeenCalledWith('/admin/reader-fonts',expect.objectContaining({method:'POST'})));
   expect(await screen.findByRole('status')).toHaveTextContent('Select it in English or Armenian');
+});
+
+it('keeps a font draft and refreshes its save version after unrelated reading-mode changes',async()=>{
+  const view=setup();
+  await userEvent.selectOptions(screen.getByRole('combobox',{name:'English font'}),'font-1');
+  fireEvent.change(screen.getByRole('spinbutton',{name:/English font size/}),{target:{value:'25'}});
+  const updated={...settings,wordRepetitionPauseMs:800,updatedAt:'2026-10-27T11:00:00.000Z'};
+  view.rerender(<ReaderAppearance settings={updated}/>);
+  request.mockResolvedValue({settings:{...updated,mainTextFontId:'font-1',mainTextFontSize:25,updatedAt:'2026-10-27T12:00:00.000Z'}});
+  await userEvent.click(screen.getByRole('button',{name:'Save reader appearance'}));
+  await screen.findByRole('status');
+  expect(JSON.parse(request.mock.calls[0][1].body)).toMatchObject({mainTextFontId:'font-1',mainTextFontSize:25,expectedUpdatedAt:updated.updatedAt});
+  expect(screen.getByRole('spinbutton',{name:/English font size/})).toHaveValue(25);
+});
+
+it('protects an unsaved appearance draft from conflicting appearance changes',async()=>{
+  const view=setup();
+  fireEvent.change(screen.getByRole('spinbutton',{name:/English font size/}),{target:{value:'25'}});
+  const updated={...settings,mainTextFontSize:28,updatedAt:'2026-10-27T11:00:00.000Z'};
+  view.rerender(<ReaderAppearance settings={updated}/>);
+  request.mockRejectedValue(new Error('Settings changed in another session.'));
+  await userEvent.click(screen.getByRole('button',{name:'Save reader appearance'}));
+  await screen.findByRole('alert');
+  expect(JSON.parse(request.mock.calls[0][1].body).expectedUpdatedAt).toBe(settings.updatedAt);
+  expect(screen.getByRole('spinbutton',{name:/English font size/})).toHaveValue(25);
+  await userEvent.click(screen.getByRole('button',{name:'Discard changes'}));
+  expect(screen.getByRole('spinbutton',{name:/English font size/})).toHaveValue(28);
+});
+
+it('refreshes a clean appearance form when a saved font changes elsewhere',()=>{
+  const view=setup();
+  view.rerender(<ReaderAppearance settings={{...settings,mainTextFontId:'font-1',updatedAt:'2026-10-27T11:00:00.000Z'}}/>);
+  expect(screen.getByRole('combobox',{name:'English font'})).toHaveValue('font-1');
 });

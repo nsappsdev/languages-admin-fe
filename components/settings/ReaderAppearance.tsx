@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AppSettings } from '../../lib/apiTypes';
 import { appearanceError, readerAppearance, ReaderAppearance as AppearanceDraft } from '../../lib/readerAppearance';
@@ -13,22 +13,34 @@ const input='mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 t
 export function ReaderAppearance({settings}:{settings:AppSettings}) {
   const {request}=useApiClient(); const queries=useQueryClient(); const library=useReaderFonts();
   const [draft,setDraft]=useState(()=>readerAppearance(settings));
-  const [base,setBase]=useState(settings.updatedAt); const [tab,setTab]=useState('English');
+  const [base,setBase]=useState(()=>({updatedAt:settings.updatedAt,appearance:readerAppearance(settings)})); const [tab,setTab]=useState('English');
   const [pending,setPending]=useState(false); const [error,setError]=useState(''); const [notice,setNotice]=useState('');
   const fonts=library.data?.fonts??[];
   const mainFont=fonts.find(f=>f.id===draft.mainTextFontId), translationFont=fonts.find(f=>f.id===draft.translationFontId);
   const main=useFontPreview(mainFont), translation=useFontPreview(translationFont);
   const validation=appearanceError(draft);
+  useEffect(()=>{
+    // Playback saves share the settings version but do not conflict with an
+    // appearance draft. Keep real concurrent appearance edits protected.
+    if(Date.parse(settings.updatedAt)<=Date.parse(base.updatedAt))return;
+    const incoming=readerAppearance(settings);
+    const pristine=JSON.stringify(draft)===JSON.stringify(base.appearance);
+    if(pristine||JSON.stringify(incoming)===JSON.stringify(base.appearance)){
+      setBase({updatedAt:settings.updatedAt,appearance:incoming});
+      if(pristine)setDraft(incoming);
+    }
+  },[base,draft,settings]);
   const change=<K extends keyof AppearanceDraft>(key:K,value:AppearanceDraft[K])=>{setDraft(old=>({...old,[key]:value}));setNotice('');};
   const save=async()=>{
     if(validation||pending)return;setPending(true);setError('');setNotice('');
     try {
-      const result=await request<{settings:AppSettings}>('/settings',{method:'PATCH',body:JSON.stringify({...draft,translationFontSize:draft.translationFontMaxSize,expectedUpdatedAt:base})});
-      setDraft(readerAppearance(result.settings));setBase(result.settings.updatedAt);setNotice('Reader appearance saved. Learners will see it when they reopen a lesson.');
+      const result=await request<{settings:AppSettings}>('/settings',{method:'PATCH',body:JSON.stringify({...draft,translationFontSize:draft.translationFontMaxSize,expectedUpdatedAt:base.updatedAt})});
+      const appearance=readerAppearance(result.settings);
+      setDraft(appearance);setBase({updatedAt:result.settings.updatedAt,appearance});setNotice('Reader appearance saved. Learners will see it when they reopen a lesson.');
       await Promise.all([queries.invalidateQueries({queryKey:['settings']}),queries.invalidateQueries({queryKey:['reader-fonts']})]);
     }catch(e){setError(e instanceof Error?e.message:'Unable to save reader appearance.');}finally{setPending(false);}
   };
-  const reload=()=>{setDraft(readerAppearance(settings));setBase(settings.updatedAt);setError('');setNotice('Latest saved appearance loaded.');};
+  const reload=()=>{const appearance=readerAppearance(settings);setDraft(appearance);setBase({updatedAt:settings.updatedAt,appearance});setError('');setNotice('Latest saved appearance loaded.');};
   const fontSelect=(role:'mainText'|'translation')=>{
     const idKey=role==='mainText'?'mainTextFontId':'translationFontId'; const familyKey=role==='mainText'?'mainTextFontFamily':'translationFontFamily';
     return <label className="block text-sm font-medium text-slate-700">{role==='mainText'?'English':'Armenian'} font

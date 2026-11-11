@@ -1,10 +1,12 @@
 # Languages admin
 
-Create a lesson with one or more texts. Save and explicitly generate ElevenLabs narration, select words or phrases, add Armenian translations, prepare word audio, then publish. **Check vocabulary audio** lists existing recordings to reuse and distinct missing recordings to generate. Confirm to reuse saved audio and generate only missing words separately, saving them in Vocabulary for future lessons. Publication makes the lesson available immediately in the learning app and requires prepared audio.
+Create a lesson with one or more texts. Save the source, review sentence breaks and **Prepare sentence audio**, select words or phrases, add Armenian translations, prepare word audio, then publish. Every sentence has a separate recording; full-text playback joins them in order. **Check vocabulary audio** lists existing recordings to reuse and distinct missing recordings to generate. Confirm to reuse saved audio and generate only missing words separately, saving them in Vocabulary for future lessons. Publication makes the lesson available immediately in the learning app and requires prepared audio.
 
 `NEXT_PUBLIC_API_BASE_URL` selects the API. Provider credentials belong only on the server. Use `npm test`, `npm run lint`, `npm run build`, and `npx tsc --noEmit` to verify changes. See [the backend authoring contract](../backend/AUDIO_AUTHORING.md).
 
 ## Vocabulary workspace
+
+The **Sentence audio** section supports **Split at cursor**, **Join next**, individual listening and explicit single-sentence regeneration. Matching recordings are reused; changed neighboring context can require new audio. Same-source audio regeneration preserves matching learning selections and translations. Apply backend migration `20261110100000_sentence_audio` before using these controls. See [the 10–11 November session notes](docs/session-2026-11-11.md) for the related settings fixes and verification.
 
 After narration is aligned, use **Import words & translations** to paste two spreadsheet columns, `word → Armenian translation` pairs, or a UTF-8 CSV with `word,translation` columns (optional header). The preview matches whole words and consecutive phrases in the current text, ignoring case and whitespace differences. Every repeated occurrence has its own checkbox and sentence context. Existing differing translations are unchecked by default; unmatched rows and overlapping selections are reported before import. One request applies up to 500 selected occurrences atomically. If another edit changes the draft, refresh the preview.
 

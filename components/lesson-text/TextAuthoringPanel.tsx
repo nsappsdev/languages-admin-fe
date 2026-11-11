@@ -9,6 +9,7 @@ import { TextVocabularyEditor } from './TextVocabularyEditor';
 import { TextReadinessPanel } from './TextReadinessPanel';
 import { VocabularyImport } from './VocabularyImport';
 import { learningOccurrences } from '../../lib/vocabularyImport';
+import { SentenceAudioControls } from './SentenceAudioControls';
 import { VocabularyAudioControls } from './VocabularyAudioControls';
 
 export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
@@ -27,18 +28,19 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
   const [importDirty, setImportDirty] = useState(false);
   const [phraseDirty, setPhraseDirty] = useState(false);
   const [wordAudioBusy, setWordAudioBusy] = useState(false);
+  const [sentenceBreaksDirty, setSentenceBreaksDirty] = useState(false);
   const [dirtyTranslations, setDirtyTranslations] = useState<Record<string, boolean>>({});
   const alignmentId = workspace?.alignmentSummary?.id ?? null;
   const occurrencesQuery = useTextOccurrences(lessonId, textId, alignmentId);
   const readinessQuery = useTextReadiness(lessonId, textId);
   const mutations = useTextAuthoringMutations(lessonId, textId);
-  const jobQuery = useAudioJob(workspace?.activeNarrationJobId ?? jobId);
+  const jobQuery = useAudioJob(workspace?.activeNarrationJobId ?? jobId ?? workspace?.latestNarrationJobId ?? null);
   const text = draftText ?? workspace?.contentRevision?.text ?? '';
   const textDirty = !!workspace && text !== (workspace.contentRevision?.text ?? '');
   const generating = mutations.requestNarrationJob.isPending || jobQuery.data?.job.status === 'QUEUED' || jobQuery.data?.job.status === 'RUNNING' || Boolean(workspace?.activeNarrationJobId);
   const translationsDirty = Object.values(dirtyTranslations).some(Boolean);
   const savingVocabulary = wordAudioBusy || mutations.setSelection.isPending || mutations.setTranslations.isPending || mutations.importVocabulary.isPending;
-  const busy = wordAudioBusy || importDirty || phraseDirty || mutations.importVocabulary.isPending || textDirty || generating || mutations.saveContentRevision.isPending || mutations.setSelection.isPending || mutations.setTranslations.isPending || Object.values(dirtyTranslations).some(Boolean);
+  const busy = sentenceBreaksDirty || wordAudioBusy || importDirty || phraseDirty || mutations.importVocabulary.isPending || textDirty || generating || mutations.saveContentRevision.isPending || mutations.setSelection.isPending || mutations.setTranslations.isPending || Object.values(dirtyTranslations).some(Boolean);
 
   useEffect(() => {
     onBusyChange?.(textId, busy);
@@ -58,9 +60,9 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
     setActionError(null);
     try { await action(); } catch (error) { setActionError(error instanceof Error ? error.message : 'Unable to save changes'); }
   };
-  const saveAndGenerate = async () => {
+  const saveAndGenerate = async (sentenceEndOffsets?: number[], regenerateSentenceIndex?: number) => {
     const saved = await mutations.saveContentRevision.mutateAsync(text);
-    const result = await mutations.requestNarrationJob.mutateAsync({ contentRevisionId: saved.revision.id });
+    const result = await mutations.requestNarrationJob.mutateAsync({ contentRevisionId: saved.revision.id, sentenceEndOffsets, regenerateSentenceIndex, expectedDraftVersion: saved.textVersion });
     setJobId(result.job.id);
   };
   const toggle = async (occurrenceId: string, selected: boolean) => {
@@ -76,24 +78,30 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
   return <section aria-label="Text authoring" className="min-w-0 space-y-4">
     <div className="grid items-start gap-4 lg:grid-cols-2">
     <details open={!workspace.narration || textDirty || generating || undefined} className="rounded-lg border border-slate-200 p-3">
-      <summary className="cursor-pointer text-sm font-semibold text-slate-800 focus-visible:outline-brand-500">Source text &amp; narration settings <span className="ml-2 font-normal text-slate-600">{text.length.toLocaleString()} characters</span></summary>
+      <summary className="cursor-pointer text-sm font-semibold text-slate-800 focus-visible:outline-brand-500">Source text &amp; audio settings <span className="ml-2 font-normal text-slate-600">{text.length.toLocaleString()} characters</span></summary>
       <div className="mt-3">
       <label htmlFor={`text-${textId}`} className="text-sm font-medium text-slate-700">Full text</label>
       <textarea id={`text-${textId}`} value={text} maxLength={5000} onChange={event => setDraftText(event.target.value)} rows={5} disabled={generating || savingVocabulary || importDirty || phraseDirty}
         className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
       <div className="mt-2 flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => void run(saveAndGenerate)} disabled={!text.trim() || !workspace.audioGenerationConfigured || generating || mutations.saveContentRevision.isPending || savingVocabulary || translationsDirty || importDirty || phraseDirty}
+        <button type="button" onClick={() => void run(async () => { await mutations.saveContentRevision.mutateAsync(text); })} disabled={!textDirty || !text.trim() || generating || mutations.saveContentRevision.isPending || savingVocabulary || translationsDirty || importDirty || phraseDirty}
           className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-          {generating ? 'Generating narration…' : mutations.saveContentRevision.isPending ? 'Saving…' : workspace.narration && !textDirty ? 'Regenerate narration' : 'Save and generate narration'}
+          {mutations.saveContentRevision.isPending ? 'Saving…' : 'Save text'}
         </button>
         {textDirty ? <span className="text-xs text-amber-800">Unsaved text changes</span> : null}
       </div>
-      {workspace.narration ? <p className="mt-2 text-xs text-slate-500">Regenerating narration clears the current word selections. Select words again after it finishes.</p> : null}
+      {workspace.narration ? <p className="mt-2 text-xs text-slate-500">Matching sentence recordings are reused. Word selections and translations carry forward when the source text is the same.</p> : null}
       {!workspace.audioGenerationConfigured ? <p className="mt-2 text-sm text-amber-800">ElevenLabs narration is not configured. Contact your administrator.</p> : null}
       </div>
     </details>
     <NarrationControls narration={workspace.narration} activeJob={jobQuery.data?.job} />
     </div>
+    <SentenceAudioControls key={`${text}-${workspace.narration?.id ?? 'draft'}`} text={text}
+      recordings={textDirty ? [] : workspace.narration?.sentences ?? []}
+      plannedEnds={textDirty ? undefined : workspace.sentenceEndOffsets}
+      allowRegeneration={!textDirty && (Boolean(workspace.narration?.sentences?.length) || jobQuery.data?.job.status === 'FAILED')}
+      disabled={!workspace.audioGenerationConfigured || generating || mutations.saveContentRevision.isPending || savingVocabulary || translationsDirty || importDirty || phraseDirty}
+      onDirtyChange={setSentenceBreaksDirty} onGenerate={(ends, index) => void run(() => saveAndGenerate(ends, index))} />
     {actionError ? <p role="alert" className="text-sm text-rose-700">{actionError}</p> : null}
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
       <div><h3 className="text-base font-semibold text-slate-900">Learning words &amp; phrases</h3><p className="mt-1 text-sm text-slate-600">Choose from the text, then add Armenian translations.</p></div>

@@ -34,6 +34,14 @@ it('allows zero without silently replacing it with the default pause', () => {
   expect(mutate.mock.calls[0][0].wordRepetitionPauseMs).toBe(0);
 });
 
+it('saves edited display names and positions without changing mode identities', () => {
+  render(<SettingsPage />);
+  fireEvent.change(screen.getAllByRole('textbox', { name: 'Display name' })[1], { target: { value: 'Word practice' } });
+  fireEvent.change(screen.getAllByRole('spinbutton', { name: 'Order' })[1], { target: { value: '0' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+  expect(mutate.mock.calls[0][0].readingModes[1]).toMatchObject({ id: 'teaching', displayName: 'Word practice', order: 0, unknownWordRepetitions: 5 });
+});
+
 it('preserves unsaved playback edits when reader appearance refreshes settings', () => {
   const view = render(<SettingsPage />);
   fireEvent.click(screen.getByRole('button', { name: 'Use 400 ms' }));

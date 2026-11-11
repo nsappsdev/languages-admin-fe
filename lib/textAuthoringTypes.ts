@@ -14,6 +14,16 @@ export interface TextNarrationSummary {
   model: string;
   voiceId: string;
   createdAt: string;
+  sentences?: SentenceRecording[];
+}
+
+export interface SentenceRecording {
+  text: string;
+  charStart: number;
+  charEnd: number;
+  assetId: string;
+  startSample: number;
+  endSample: number;
 }
 
 export type AlignmentStatus = 'OK' | 'NEEDS_REVIEW';
@@ -32,6 +42,8 @@ export interface TextWorkspaceDetail {
   alignmentSummary: TextAlignmentSummary | null;
   audioGenerationConfigured: boolean;
   activeNarrationJobId?: string | null;
+  latestNarrationJobId?: string | null;
+  sentenceEndOffsets?: number[];
   activeVocabularyJobId?: string | null;
 }
 
