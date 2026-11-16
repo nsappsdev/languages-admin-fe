@@ -27,7 +27,7 @@ it('shows progress and disables duplicate clicks for the whole operation', async
   let finish!: (value: unknown) => void;
   request.mockReturnValue(new Promise(resolve => { finish = resolve; })); setup();
   await userEvent.click(screen.getByRole('button', { name: 'Publish' }));
-  const pending = await screen.findByRole('button', { name: 'Preparing clips and publishing…' });
+  const pending = await screen.findByRole('button', { name: 'Publishing…' });
   expect(pending).toBeDisabled(); await userEvent.click(pending); expect(request).toHaveBeenCalledTimes(1);
   finish({}); await screen.findByText(/now available in the learning app/);
 });

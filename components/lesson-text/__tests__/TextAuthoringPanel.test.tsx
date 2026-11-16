@@ -161,7 +161,7 @@ describe('TextAuthoringPanel', () => {
     const onBusyChange = jest.fn();
     const user = userEvent.setup();
     render(<TextAuthoringPanel lessonId="lesson-1" textId="item-1" onBusyChange={onBusyChange} />, { wrapper: createWrapper() });
-    const generate = await screen.findByRole('button', { name: 'Prepare sentence audio' });
+    const generate = await screen.findByRole('button', { name: 'Generate all sentences' });
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('narration-jobs'))).toBe(false);
     await user.click(generate);
     const select = await screen.findByRole('button', { name: /select occurrence "hello"/i });
@@ -193,7 +193,7 @@ describe('TextAuthoringPanel', () => {
       return result;
     }) as typeof fetch);
     render(<TextAuthoringPanel lessonId="lesson-1" textId="item-1" />, { wrapper: createWrapper() });
-    expect(await screen.findByText(/ElevenLabs narration is not configured/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Prepare sentence audio' })).toBeDisabled();
+    expect(await screen.findByText(/Sentence audio generation is not configured/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Generate all sentences' })).toBeDisabled();
   });
 });

@@ -37,3 +37,21 @@ it('does not match a phrase across sentence boundaries', () => {
   data.occurrences = [{ ...data.occurrences[0], text: 'Look', charStart: 0, charEnd: 4 }, { ...data.occurrences[1], text: 'After', sentenceId: 's2', charStart: 6, charEnd: 11 }];
   expect(matchVocabularyImport(parseVocabularyImport('look after → հոգ տանել').rows, data).matches).toEqual([]);
 });
+
+it('keeps valid rows when other rows have no translation and matches without audio', () => {
+  const parsed = parseVocabularyImport('look after,հոգ տանել\ncats,\nghost,ուրվական');
+  expect(parsed.missingTranslations).toBe(1);
+  expect(parsed.rows).toHaveLength(2);
+  const data = { ...importFixture, status: 'NEEDS_REVIEW' as const,
+    occurrences: importFixture.occurrences.map(word => ({ ...word, mappingStatus: 'UNMAPPED' as const, speechStartSample: null, speechEndSample: null })) };
+  const result = matchVocabularyImport(parsed.rows, data);
+  expect(result.matches).toHaveLength(2);
+  expect(result.matches.every(match => !match.issue)).toBe(true);
+  expect(result.unmatched.map(row => row.term)).toEqual(['ghost']);
+});
+
+it('accepts more than 500 input rows', () => {
+  const parsed = parseVocabularyImport(Array.from({ length: 501 }, (_, i) => `word${i},բառ`).join('\n'));
+  expect(parsed.errors).toEqual([]);
+  expect(parsed.rows).toHaveLength(501);
+});

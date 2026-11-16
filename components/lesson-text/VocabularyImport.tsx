@@ -18,7 +18,7 @@ export function VocabularyImport({ data, pending, onImport, onClose, onDirtyChan
   const [source, setSource] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [message, setMessage] = useState('');
-  const [preview, setPreview] = useState<ReturnType<typeof matchVocabularyImport> & { draftVersion: number } | null>(null);
+  const [preview, setPreview] = useState<ReturnType<typeof matchVocabularyImport> & { draftVersion: number; missingTranslations: number; skippedInvalid: number } | null>(null);
   const [included, setIncluded] = useState<Set<string>>(new Set());
   const chosen = preview?.matches.filter(match => included.has(match.key)) ?? [];
   const stale = preview !== null && preview.draftVersion !== data.draftVersion;
@@ -28,18 +28,18 @@ export function VocabularyImport({ data, pending, onImport, onClose, onDirtyChan
   const buildPreview = () => {
     const parsed = parseVocabularyImport(source);
     setErrors(parsed.errors); setMessage('');
-    if (parsed.errors.length || data.draftVersion === undefined) { setPreview(null); return; }
+    if (!parsed.rows.length || data.draftVersion === undefined) { setPreview(null); if (parsed.missingTranslations) setMessage(`0 imported. ${parsed.missingTranslations} ${parsed.missingTranslations === 1 ? 'row' : 'rows'} skipped because they have no translation.`); return; }
     const result = matchVocabularyImport(parsed.rows, data);
-    setPreview({ ...result, draftVersion: data.draftVersion });
+    setPreview({ ...result, draftVersion: data.draftVersion, missingTranslations: parsed.missingTranslations, skippedInvalid: parsed.errors.length - parsed.missingTranslations });
     setIncluded(new Set(result.matches.filter(match => !match.issue && !match.replace && !match.unchanged).map(match => match.key)));
   };
   const apply = async () => {
-    if (!preview || stale || overlapping || !chosen.length || chosen.length > 500) return;
+    if (!preview || stale || overlapping || !chosen.length) return;
     setErrors([]);
     try {
       await onImport({ alignmentId: data.alignmentId, expectedDraftVersion: preview.draftVersion,
         entries: chosen.map(match => ({ occurrenceId: match.first.id, endOccurrenceId: match.last.id === match.first.id ? null : match.last.id, translation: match.row.translation })) });
-      setMessage(`Imported ${chosen.length} learning ${chosen.length === 1 ? 'entry' : 'entries'} with Armenian translations.`);
+      setMessage(`Imported ${chosen.length} learning ${chosen.length === 1 ? 'entry' : 'entries'} with Armenian translations. ${preview.unmatched.length} ${preview.unmatched.length === 1 ? 'row' : 'rows'} skipped because they were not in the text; ${preview.missingTranslations} skipped because they had no translation.${preview.skippedInvalid ? ` ${preview.skippedInvalid} other invalid rows skipped.` : ''}`);
       setSource(''); setPreview(null);
     } catch (error) { setErrors([error instanceof Error ? error.message : 'Import failed. Your preview is preserved; try again.']); }
   };
@@ -70,7 +70,7 @@ export function VocabularyImport({ data, pending, onImport, onClose, onDirtyChan
         <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium">{preview.matches.length} matches · {chosen.length} selected</p>
           <button type="button" className="text-sm text-brand-600 underline" onClick={() => setIncluded(new Set())}>Clear selection</button></div>
         <p className="text-xs text-slate-600">Review the sentence for each match. Replacing an existing translation is unchecked by default.</p>
-        {preview.unmatched.length ? <p role="status" className="text-sm text-amber-800">No match for {preview.unmatched.map(row => `“${row.term}” (row ${row.line})`).join(', ')}. These rows will not be imported.</p> : null}
+        {preview.unmatched.length ? <p role="status" className="text-sm text-amber-800">{preview.unmatched.length} {preview.unmatched.length === 1 ? 'row' : 'rows'} not imported because they are not in the text: {preview.unmatched.map(row => `“${row.term}” (row ${row.line})`).join(', ')}. These rows will not be imported.</p> : null}
         <div className="max-h-80 overflow-y-auto overscroll-contain rounded-md border border-slate-200 bg-white">
           {preview.matches.map(match => <label key={match.key} className="flex items-start gap-3 border-b border-slate-100 p-3 last:border-0">
             <input type="checkbox" className="mt-1 size-4 shrink-0 accent-indigo-600" checked={included.has(match.key)} disabled={!!match.issue || match.unchanged} onChange={event => setChecked(match, event.target.checked)}
@@ -85,8 +85,8 @@ export function VocabularyImport({ data, pending, onImport, onClose, onDirtyChan
         </div>
         {stale ? <p role="alert" className="text-sm text-amber-800">This text changed. Refresh the preview before importing.</p> : null}
         {overlapping ? <p role="alert" className="text-sm text-amber-800">Some checked words overlap with a checked phrase. Choose one or the other.</p> : null}
-        {chosen.length > 500 ? <p role="alert" className="text-sm text-amber-800">Select up to 500 occurrences at a time.</p> : null}
-        <button type="button" onClick={() => void apply()} disabled={!chosen.length || chosen.length > 500 || overlapping || stale} className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+        {preview.missingTranslations ? <p role="status" className="text-sm text-amber-800">{preview.missingTranslations} {preview.missingTranslations === 1 ? 'row' : 'rows'} skipped because they have no translation.</p> : null}
+        <button type="button" onClick={() => void apply()} disabled={!chosen.length || overlapping || stale} className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
           {pending ? 'Importing…' : `Import ${chosen.length} ${chosen.length === 1 ? 'entry' : 'entries'}`}
         </button>
       </div> : null}

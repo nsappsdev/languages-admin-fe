@@ -37,13 +37,12 @@ export function OccurrenceSelection({ occurrences, pendingOccurrenceId, onToggle
     try { await onCreatePhrase?.(phraseStart.id, phraseEnd.id); cancelPhrase(); }
     catch (error) { setPhraseError(error instanceof Error ? error.message : 'Unable to add phrase. Try again.'); }
   };
-  const needsReview = occurrences.status === 'NEEDS_REVIEW';
 
   return (
     <div>
       {onCreatePhrase ? <div className="mb-3 space-y-2 border-b border-slate-200 pb-3">
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" aria-pressed={phraseMode} disabled={needsReview || !!pendingOccurrenceId} onClick={() => phraseMode ? cancelPhrase() : setPhraseMode(true)}
+          <button type="button" aria-pressed={phraseMode} disabled={!!pendingOccurrenceId} onClick={() => phraseMode ? cancelPhrase() : setPhraseMode(true)}
             className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">{phraseMode ? 'Cancel phrase' : 'Select a phrase'}</button>
           <span className="text-xs text-slate-600">{phraseMode ? phraseStart ? 'Now choose the last word in the same sentence.' : 'Choose the first word of your phrase.' : 'Click a word to select it, or group consecutive words.'}</span>
         </div>
@@ -52,12 +51,6 @@ export function OccurrenceSelection({ occurrences, pendingOccurrenceId, onToggle
         {overlap ? <p role="alert" className="text-sm text-amber-800">This phrase overlaps a selected word or phrase. Remove that selection first.</p> : null}
         {phraseError ? <p role="alert" className="text-sm text-rose-700">{phraseError}</p> : null}
       </div> : null}
-      {needsReview ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Alignment needs review. Word selection is unavailable; you can still listen to the narration.
-          Manual alignment correction is not available yet.
-        </p>
-      ) : null}
       {occurrences.sentences.map((sentence, index) => {
         const words = occurrences.occurrences
           .filter(word => phraseMode || !selected.some(range => word.charStart > range.charStart && word.charStart < range.charEnd))
@@ -79,7 +72,7 @@ export function OccurrenceSelection({ occurrences, pendingOccurrenceId, onToggle
               // source offsets or including punctuation in its selectable button.
               const punctuation = sentence.text.slice(end, gapEnd).match(/^\p{P}+/u)?.[0] ?? '';
               cursor = end + punctuation.length;
-              const disabled = needsReview || occurrence.mappingStatus === 'UNMAPPED' || Boolean(pendingOccurrenceId);
+              const disabled = Boolean(pendingOccurrenceId);
               const incomplete = occurrence.selected && !occurrence.translations.some((t) => ['hy', 'am'].includes(t.languageCode) && t.translation.trim());
               return (
                 <Fragment key={occurrence.id}>
@@ -107,7 +100,6 @@ export function OccurrenceSelection({ occurrences, pendingOccurrenceId, onToggle
                         : occurrence.selected ? 'bg-brand-50 text-brand-800 underline decoration-brand-400 underline-offset-4'
                           : 'hover:bg-slate-100'
                     } ${focusedOccurrenceId === occurrence.id ? 'ring-2 ring-brand-400' : ''}`}
-                    title={occurrence.mappingStatus === 'UNMAPPED' ? 'Not mappable to speech in this narration' : undefined}
                   >
                     {sentence.text.slice(start, end)}
                   </button>
@@ -120,7 +112,7 @@ export function OccurrenceSelection({ occurrences, pendingOccurrenceId, onToggle
           </div>
         </section>
       );})}
-      {!occurrences.sentences.length ? <p className="text-sm text-slate-500">No aligned sentences available yet.</p> : null}
+      {!occurrences.sentences.length ? <p className="text-sm text-slate-500">Save the text to select words.</p> : null}
     </div>
   );
 }

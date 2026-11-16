@@ -71,8 +71,16 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
     onSuccess: invalidateWorkspace,
   });
 
+  const saveSentencePlan = useMutation({
+    mutationFn: (input: { contentRevisionId: string; expectedDraftVersion: number; sentenceEndOffsets: number[] }) =>
+      request<{ saved: boolean }>(`/admin/lessons/${lessonId}/texts/${textId}/sentences`, {
+        method: 'PUT', body: JSON.stringify(input),
+      }),
+    onSuccess: invalidateSelectionState,
+  });
+
   const requestNarrationJob = useMutation({
-    mutationFn: (input: { contentRevisionId: string; sentenceEndOffsets?: number[]; regenerateSentenceIndex?: number; expectedDraftVersion?: number }) =>
+    mutationFn: (input: { contentRevisionId: string; sentenceEndOffsets?: number[]; sentenceIndex?: number; regenerateSentenceIndex?: number; expectedDraftVersion?: number }) =>
       request<{ job: AudioJob; replay: boolean }>(`/admin/lessons/${lessonId}/texts/${textId}/narration-jobs`, {
         method: 'POST',
         headers: { 'Idempotency-Key': createIdempotencyKey() },
@@ -119,5 +127,5 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
     onSuccess: invalidateSelectionState,
   });
 
-  return { saveContentRevision, requestNarrationJob, setSelection, setTranslations, importVocabulary };
+  return { saveSentencePlan, saveContentRevision, requestNarrationJob, setSelection, setTranslations, importVocabulary };
 }
