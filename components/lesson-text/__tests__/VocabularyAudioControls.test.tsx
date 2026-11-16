@@ -50,3 +50,20 @@ it('shows the reuse and generation totals after a finished job', () => {
   mockJob = { job: { id: 'job', status: 'SUCCEEDED', resultId: JSON.stringify({ reusedCount: 3, generatedCount: 2 }) } };
   mount(); expect(screen.getByRole('status')).toHaveTextContent('3 entries reused saved audio; 2 new recordings generated');
 });
+
+it('prepares clips from sentences without requiring a speech provider', async () => {
+  mockRequest.mockImplementation(async (_url, options) => options?.method === 'POST' ? { job: { id: 'clip-job', status: 'QUEUED' } } :
+    { ...plan, source: 'sentences', generateCount: 0, extractCount: 1, canPrepare: true, audioGenerationConfigured: false });
+  mount(); await userEvent.click(screen.getByRole('button', { name: 'Check vocabulary audio' }));
+  expect(await screen.findByText('Extract from sentence')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Prepare audio from sentences' }));
+  await waitFor(() => expect(mockRequest).toHaveBeenCalledWith(expect.stringContaining('/audio-jobs'), expect.objectContaining({ method: 'POST' })));
+});
+
+it('explains why sentence audio must be ready first', async () => {
+  mockRequest.mockResolvedValue({ ...plan, source: 'sentences', generateCount: 0, extractCount: 1, canPrepare: false,
+    blockedReason: 'Generate all sentence recordings before preparing word audio.' });
+  mount(); await userEvent.click(screen.getByRole('button', { name: 'Check vocabulary audio' }));
+  expect(await screen.findByRole('button', { name: 'Prepare audio from sentences' })).toBeDisabled();
+  expect(screen.getByRole('status')).toHaveTextContent('Generate all sentence recordings');
+});

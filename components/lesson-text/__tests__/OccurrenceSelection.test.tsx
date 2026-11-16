@@ -35,11 +35,11 @@ it('renders the two aligned sentences with their punctuation and separate repeat
   expect(onToggle).toHaveBeenCalledTimes(1); // focusing an existing selection must not deselect it
 });
 
-it('keeps sentences readable while review blocks selection', () => {
+it('allows text selection before audio alignment exists', () => {
   render(<OccurrenceSelection occurrences={{ ...alignment, status: 'NEEDS_REVIEW' }} pendingOccurrenceId={null} focusedOccurrenceId={null} onToggle={jest.fn()} onFocusOccurrence={jest.fn()} />);
   expect(screen.getByRole('region', { name: 'Sentence 2' }).textContent).toContain('A cat watched.');
-  expect(screen.getByText(/manual alignment correction is not available/i)).toBeTruthy();
-  for (const button of screen.getAllByRole('button')) expect((button as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByText(/manual alignment correction is not available/i)).toBeNull();
+  for (const button of screen.getAllByRole('button')) expect((button as HTMLButtonElement).disabled).toBe(false);
 });
 
 it('blocks another selection while a selection request is pending', () => {

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAudioJob } from '../../hooks/useAudioJob';
 import { useTextAuthoringMutations, useTextOccurrences, useTextReadiness, useTextWorkspace } from '../../hooks/useTextAuthoring';
-import { NarrationControls } from './NarrationControls';
 import { OccurrenceSelection } from './OccurrenceSelection';
 import { TextVocabularyEditor } from './TextVocabularyEditor';
 import { TextReadinessPanel } from './TextReadinessPanel';
@@ -60,9 +59,9 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
     setActionError(null);
     try { await action(); } catch (error) { setActionError(error instanceof Error ? error.message : 'Unable to save changes'); }
   };
-  const saveAndGenerate = async (sentenceEndOffsets?: number[], regenerateSentenceIndex?: number) => {
+  const saveAndGenerate = async (sentenceEndOffsets?: number[], sentenceIndex?: number, regenerate?: boolean) => {
     const saved = await mutations.saveContentRevision.mutateAsync(text);
-    const result = await mutations.requestNarrationJob.mutateAsync({ contentRevisionId: saved.revision.id, sentenceEndOffsets, regenerateSentenceIndex, expectedDraftVersion: saved.textVersion });
+    const result = await mutations.requestNarrationJob.mutateAsync({ contentRevisionId: saved.revision.id, sentenceEndOffsets, ...(regenerate ? { regenerateSentenceIndex: sentenceIndex } : { sentenceIndex }), expectedDraftVersion: saved.textVersion });
     setJobId(result.job.id);
   };
   const toggle = async (occurrenceId: string, selected: boolean) => {
@@ -76,9 +75,9 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
   if (workspaceQuery.isLoading) return <p className="text-sm text-slate-500">Loading text…</p>;
   if (workspaceQuery.error || !workspace) return <p role="alert" className="text-sm text-rose-700">Unable to load text. <button onClick={() => void workspaceQuery.refetch()} className="underline">Try again</button></p>;
   return <section aria-label="Text authoring" className="min-w-0 space-y-4">
-    <div className="grid items-start gap-4 lg:grid-cols-2">
-    <details open={!workspace.narration || textDirty || generating || undefined} className="rounded-lg border border-slate-200 p-3">
-      <summary className="cursor-pointer text-sm font-semibold text-slate-800 focus-visible:outline-brand-500">Source text &amp; audio settings <span className="ml-2 font-normal text-slate-600">{text.length.toLocaleString()} characters</span></summary>
+    <div>
+    <details open className="rounded-lg border border-slate-200 p-3">
+      <summary className="cursor-pointer text-sm font-semibold text-slate-800 focus-visible:outline-brand-500">Source text <span className="ml-2 font-normal text-slate-600">{text.length.toLocaleString()} characters</span></summary>
       <div className="mt-3">
       <label htmlFor={`text-${textId}`} className="text-sm font-medium text-slate-700">Full text</label>
       <textarea id={`text-${textId}`} value={text} maxLength={5000} onChange={event => setDraftText(event.target.value)} rows={5} disabled={generating || savingVocabulary || importDirty || phraseDirty}
@@ -91,21 +90,24 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
         {textDirty ? <span className="text-xs text-amber-800">Unsaved text changes</span> : null}
       </div>
       {workspace.narration ? <p className="mt-2 text-xs text-slate-500">Matching sentence recordings are reused. Word selections and translations carry forward when the source text is the same.</p> : null}
-      {!workspace.audioGenerationConfigured ? <p className="mt-2 text-sm text-amber-800">ElevenLabs narration is not configured. Contact your administrator.</p> : null}
+      {!workspace.audioGenerationConfigured ? <p className="mt-2 text-sm text-amber-800">Sentence audio generation is not configured. Contact your administrator.</p> : null}
       </div>
     </details>
-    <NarrationControls narration={workspace.narration} activeJob={jobQuery.data?.job} />
+
     </div>
-    <SentenceAudioControls key={`${text}-${workspace.narration?.id ?? 'draft'}`} text={text}
-      recordings={textDirty ? [] : workspace.narration?.sentences ?? []}
+    <SentenceAudioControls key={`${text}-${JSON.stringify(workspace.sentenceEndOffsets)}`} text={text}
+      recordings={textDirty ? [] : workspace.sentences ?? []}
       plannedEnds={textDirty ? undefined : workspace.sentenceEndOffsets}
-      allowRegeneration={!textDirty && (Boolean(workspace.narration?.sentences?.length) || jobQuery.data?.job.status === 'FAILED')}
-      disabled={!workspace.audioGenerationConfigured || generating || mutations.saveContentRevision.isPending || savingVocabulary || translationsDirty || importDirty || phraseDirty}
-      onDirtyChange={setSentenceBreaksDirty} onGenerate={(ends, index) => void run(() => saveAndGenerate(ends, index))} />
+      disabled={textDirty || generating || mutations.saveSentencePlan.isPending || mutations.saveContentRevision.isPending || savingVocabulary || translationsDirty || importDirty || phraseDirty}
+      audioDisabled={!workspace.audioGenerationConfigured}
+      onSave={async ends => { await mutations.saveSentencePlan.mutateAsync({ contentRevisionId: workspace.contentRevision!.id, expectedDraftVersion: workspace.draftVersion, sentenceEndOffsets: ends }); }}
+      onDirtyChange={setSentenceBreaksDirty} onGenerate={(ends, index, regenerate) => void run(() => saveAndGenerate(ends, index, regenerate))} />
+    {generating ? <p role="status" className="text-sm text-slate-600">Generating sentence audio…</p> : null}
+    {jobQuery.data?.job.status === 'FAILED' ? <p role="alert" className="text-sm text-rose-700">{jobQuery.data.job.error?.message ?? 'Sentence generation failed. Try again.'}</p> : null}
     {actionError ? <p role="alert" className="text-sm text-rose-700">{actionError}</p> : null}
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
       <div><h3 className="text-base font-semibold text-slate-900">Learning words &amp; phrases</h3><p className="mt-1 text-sm text-slate-600">Choose from the text, then add Armenian translations.</p></div>
-      <button type="button" onClick={() => setImportOpen(true)} disabled={!occurrencesQuery.data || occurrencesQuery.data.status !== 'OK' || textDirty || generating || savingVocabulary || translationsDirty || phraseDirty || importOpen}
+      <button type="button" onClick={() => setImportOpen(true)} disabled={!occurrencesQuery.data || textDirty || generating || savingVocabulary || translationsDirty || phraseDirty || importOpen}
         className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Import words &amp; translations</button>
     </div>
     {importOpen && occurrencesQuery.data ? <fieldset className="min-w-0" disabled={textDirty || generating || translationsDirty}>
@@ -113,7 +115,7 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
         onClose={() => { setImportOpen(false); setImportDirty(false); }} onImport={input => mutations.importVocabulary.mutateAsync(input)} />
     </fieldset> : null}
     <fieldset disabled={wordAudioBusy || textDirty || generating || mutations.saveContentRevision.isPending || mutations.importVocabulary.isPending || importDirty} className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-      <section aria-label="Aligned sentences" className="min-w-0">
+      <section aria-label="Lesson text" className="min-w-0">
         <h4 className="mb-3 text-sm font-semibold text-slate-800">Text</h4>
         <div className="max-h-[40rem] overflow-y-auto overscroll-contain [contain:layout_paint] pr-2">
         {occurrencesQuery.data ? <OccurrenceSelection key={alignmentId} occurrences={occurrencesQuery.data}
@@ -126,7 +128,7 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
           pendingOccurrenceId={mutations.setSelection.isPending ? mutations.setSelection.variables?.changes[0]?.occurrenceId ?? null : null}
           onToggle={(id, selected) => void run(() => toggle(id, selected))} focusedOccurrenceId={focusedId}
           onFocusOccurrence={id => { setFocusedId(id); setFocusRequest(value => value + 1); }} />
-          : <p className="text-sm text-slate-500">{occurrencesQuery.error ? 'Unable to load sentences. Reload this page.' : 'Generate narration to see aligned sentences.'}</p>}
+          : <p className="text-sm text-slate-500">{occurrencesQuery.error ? 'Unable to load sentences. Reload this page.' : 'Loading saved text…'}</p>}
         </div>
       </section>
       <section aria-label="Selected words and translations" className="min-w-0">

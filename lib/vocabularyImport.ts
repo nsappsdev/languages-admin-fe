@@ -7,13 +7,13 @@ export interface ImportMatch {
   sentence: string; sentenceNumber: number; existingTranslation: string;
   issue?: string; replace: boolean; unchanged: boolean;
 }
-const normalize = (value: string) => value.normalize('NFC').trim().replace(/[‘’]/g, "'").replace(/\s+/g, ' ').toLocaleLowerCase('en');
+const normalize = (value: string) => value.normalize('NFC').trim().replace(/[‘’]/g, "'").replace(/\s+/g, ' ').toLocaleLowerCase('en').replace(/^[\p{P}]+|[\p{P}]+$/gu, '');
 export const armenianTranslation = (word: WordOccurrenceDto) => word.translations.find(t => ['hy', 'am'].includes(t.languageCode))?.translation ?? '';
 
-export function parseVocabularyImport(input: string): { rows: ImportRow[]; errors: string[] } {
-  if (input.length > 200_000) return { rows: [], errors: ['Keep the import below 200 KB.'] };
+export function parseVocabularyImport(input: string): { rows: ImportRow[]; errors: string[]; missingTranslations: number } {
+  if (input.length > 200_000) return { rows: [], missingTranslations: 0, errors: ['Keep the import below 200 KB.'] };
   const source = input.replace(/^\uFEFF/, '').trim();
-  if (!source) return { rows: [], errors: ['Paste words and Armenian translations, or choose a CSV file.'] };
+  if (!source) return { rows: [], missingTranslations: 0, errors: ['Paste words and Armenian translations, or choose a CSV file.'] };
   const lines = source.split(/\r?\n/).filter(line => line.trim());
   const arrow = lines.every(line => line.includes('→'));
   const parsed = arrow ? { data: lines.map(line => { const at = line.indexOf('→'); return [line.slice(0, at), line.slice(at + 1)]; }), errors: [] }
@@ -24,17 +24,18 @@ export function parseVocabularyImport(input: string): { rows: ImportRow[]; error
   const hasHeader = header && ['word', 'phrase', 'term', 'english', 'word / phrase'].includes(header[0]) && ['translation', 'armenian', 'hy', 'armenian translation'].includes(header[1]);
   const rows: ImportRow[] = [];
   const seen = new Set<string>();
+  let missingTranslations = 0;
   data.slice(hasHeader ? 1 : 0).forEach((columns, index) => {
     const line = index + (hasHeader ? 2 : 1);
     const [term, translation] = columns.map(value => value.trim());
+    if (term && !translation) missingTranslations++;
     if (columns.length !== 2 || !term || !translation) errors.push(`Row ${line}: provide a word or phrase and its Armenian translation in two columns.`);
     else if (translation.length > 2000) errors.push(`Row ${line}: the translation is too long (maximum 2,000 characters).`);
     else if (seen.has(normalize(term))) errors.push(`Row ${line}: “${term}” appears more than once. Use one row, then choose its occurrences in the preview.`);
     else { rows.push({ line, term, translation }); seen.add(normalize(term)); }
   });
-  if (rows.length > 500) errors.push('Import up to 500 rows at a time.');
   if (!rows.length && !errors.length) errors.push('Add at least one row beneath the header.');
-  return { rows, errors };
+  return { rows, errors, missingTranslations };
 }
 
 export function learningOccurrences(data: OccurrencesResponse): WordOccurrenceDto[] {
@@ -63,11 +64,10 @@ export function matchVocabularyImport(rows: ImportRow[], data: OccurrencesRespon
           (word.id !== first.id || word.charEnd !== last.charEnd));
         const sameSpan = (first.endOccurrenceId ?? first.id) === last.id;
         const existingTranslation = sameSpan ? armenianTranslation(first) : '';
-        const unmapped = words.slice(start, end + 1).some(word => word.mappingStatus !== 'MAPPED');
         matches.push({ key: `${row.line}:${first.id}:${last.id}`, row, first, last, sentence: sentence.text, sentenceNumber: sentenceIndex + 1,
           existingTranslation, replace: !!existingTranslation.trim() && existingTranslation !== row.translation,
           unchanged: first.selected && sameSpan && existingTranslation === row.translation,
-          issue: overlap ? `Overlaps “${overlap.text}”. Remove that selection first.` : unmapped ? 'Not aligned to narration.' : undefined });
+          issue: overlap ? `Overlaps “${overlap.text}”. Remove that selection first.` : undefined });
       }
     });
     if (matches.length === before) unmatched.push(row);

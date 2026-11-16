@@ -51,3 +51,14 @@ it('blocks stale previews and overlaps, and preserves input after a server error
   expect(screen.getByRole('button', { name: 'Import 4 entries' })).toBeDisabled();
   expect(screen.getByRole('alert')).toHaveTextContent('overlap');
 });
+
+it('imports valid rows immediately without audio and reports skipped rows by reason', async () => {
+  const { user, onImport } = setup({ ...importFixture, status: 'NEEDS_REVIEW',
+    occurrences: importFixture.occurrences.map(word => ({ ...word, mappingStatus: 'UNMAPPED', speechStartSample: null, speechEndSample: null })) });
+  await user.type(screen.getByRole('textbox'), 'look after,հոգ տանել\nghost,ուրվական\ncats,');
+  await user.click(screen.getByRole('button', { name: 'Preview matches' }));
+  expect(screen.getByRole('button', { name: 'Import 2 entries' })).toBeEnabled();
+  await user.click(screen.getByRole('button', { name: 'Import 2 entries' }));
+  expect(onImport).toHaveBeenCalledTimes(1);
+  expect(await screen.findByRole('status')).toHaveTextContent('1 row skipped because they were not in the text; 1 skipped because they had no translation');
+});

@@ -9,7 +9,7 @@ export interface TextContentRevision {
 
 export interface TextNarrationSummary {
   id: string;
-  assetId: string;
+  assetId: string | null;
   provider: string;
   model: string;
   voiceId: string;
@@ -18,10 +18,12 @@ export interface TextNarrationSummary {
 }
 
 export interface SentenceRecording {
+  requiresRegeneration?: boolean;
+  alignmentIssue?: string;
   text: string;
   charStart: number;
   charEnd: number;
-  assetId: string;
+  assetId: string | null;
   startSample: number;
   endSample: number;
 }
@@ -44,6 +46,7 @@ export interface TextWorkspaceDetail {
   activeNarrationJobId?: string | null;
   latestNarrationJobId?: string | null;
   sentenceEndOffsets?: number[];
+  sentences?: SentenceRecording[];
   activeVocabularyJobId?: string | null;
 }
 

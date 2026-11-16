@@ -80,12 +80,12 @@ export default function LessonDetailPage() {
       <div className="flex flex-wrap items-center gap-2">
       <DeleteLessonButton lessonId={lessonId} title={lesson.title} disabled={publishing || pending} />
       <button type="button" disabled={publishing || pending || unsaved} onClick={() => void publish()} className="rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-        {publishing ? 'Preparing clips and publishing…' : lesson.currentPublicationId ? 'Update published lesson' : 'Publish'}
+        {publishing ? 'Publishing…' : lesson.currentPublicationId ? 'Update published lesson' : 'Publish'}
       </button>
       </div>
     </div>
-    {unsaved ? <p role="status" className="text-sm text-amber-800">Save text and translation changes, and wait for narration to finish before publishing.</p> : null}
-    {publishing ? <p role="status" className="text-sm text-slate-600">Checking every text and extracting missing word clips from its narration…</p> : null}
+    {unsaved ? <p role="status" className="text-sm text-amber-800">Save text and translation changes, and wait for audio generation to finish before publishing.</p> : null}
+    {publishing ? <p role="status" className="text-sm text-slate-600">Checking sentence recordings, translations, and vocabulary audio…</p> : null}
     {message ? <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p> : null}
     {actionError ? <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{actionError}</p> : null}
     <fieldset disabled={publishing} className="min-w-0 space-y-5">

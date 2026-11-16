@@ -164,7 +164,7 @@ export default function NewLessonPage() {
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Texts</h2>
               <p className="text-xs text-slate-500">
-                Paste one or more texts. Generate ElevenLabs narration explicitly after creating the lesson.
+                Paste one or more texts. After saving, review the sentences, generate sentence audio, and choose learning words.
               </p>
             </div>
             <button
