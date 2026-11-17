@@ -89,6 +89,14 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
     onSuccess: invalidateSelectionState,
   });
 
+  const requestTimingRepair = useMutation({
+    mutationFn: (input: { contentRevisionId: string; expectedDraftVersion: number; sentenceIndex?: number }) =>
+      request<{ job: AudioJob; replay: boolean }>(`/admin/lessons/${lessonId}/texts/${textId}/timing-repair-jobs`, {
+        method: 'POST', headers: { 'Idempotency-Key': createIdempotencyKey() }, body: JSON.stringify(input),
+      }),
+    onSuccess: invalidateSelectionState,
+  });
+
   const setSelection = useMutation({
     mutationFn: ({
       alignmentId,
@@ -127,5 +135,5 @@ export function useTextAuthoringMutations(lessonId: string, textId: string) {
     onSuccess: invalidateSelectionState,
   });
 
-  return { saveSentencePlan, saveContentRevision, requestNarrationJob, setSelection, setTranslations, importVocabulary };
+  return { saveSentencePlan, saveContentRevision, requestNarrationJob, requestTimingRepair, setSelection, setTranslations, importVocabulary };
 }

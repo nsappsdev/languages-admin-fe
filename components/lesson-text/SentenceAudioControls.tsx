@@ -13,7 +13,7 @@ function sentenceEnds(text: string) {
   return ends;
 }
 
-export function SentenceAudioControls({ text, recordings, plannedEnds, disabled, audioDisabled, onSave, onGenerate, onDirtyChange }: {
+export function SentenceAudioControls({ text, recordings, plannedEnds, disabled, audioDisabled, onSave, onGenerate, onRepair, onDirtyChange }: {
   text: string;
   recordings: SentenceRecording[];
   plannedEnds?: number[];
@@ -21,6 +21,7 @@ export function SentenceAudioControls({ text, recordings, plannedEnds, disabled,
   onSave: (endOffsets: number[]) => Promise<void>;
   disabled: boolean;
   onGenerate: (endOffsets: number[], sentenceIndex?: number, regenerate?: boolean) => void;
+  onRepair?: (sentenceIndex: number) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const id = useId();
@@ -66,11 +67,13 @@ export function SentenceAudioControls({ text, recordings, plannedEnds, disabled,
               aria-label={`Join sentence ${index + 1} with next`} className={buttonClass}>Join next</button> : null}
             {recording?.assetId ? <button type="button" onClick={() => setPreview(preview === recording.assetId ? null : recording.assetId)}
               aria-label={`Listen to sentence ${index + 1}`} className={buttonClass}>{preview === recording.assetId ? 'Close preview' : 'Listen'}</button> : null}
+            {recording?.alignmentIssue && onRepair ? <button type="button" disabled={disabled || dirty || recording.canRepair === false}
+              onClick={() => onRepair(index)} aria-label={`Repair timings for sentence ${index + 1}`} className={buttonClass}>Repair timings</button> : null}
             <button type="button" disabled={disabled || audioDisabled} onClick={() => onGenerate(ends, index, regenerate)}
               aria-label={`${regenerate ? 'Regenerate' : 'Generate'} sentence ${index + 1}`} className={buttonClass}>{regenerate ? 'Regenerate sentence' : 'Generate sentence'}</button>
           </div>
           {recording?.requiresRegeneration ? <p className="text-sm text-amber-800">The previous request could not be confirmed. Use Regenerate sentence to make a new request.</p> : null}
-          {recording?.alignmentIssue ? <p className="text-sm text-amber-800">{recording.alignmentIssue} Regenerate this sentence before publishing.</p> : null}
+          {recording?.alignmentIssue ? <p className="text-sm text-amber-800">{recording.alignmentIssue} {recording.repairError ?? 'The recording is saved. Repair timings keeps the same audio.'}</p> : null}
           {recording?.assetId && preview === recording.assetId ? <RecordingPreview key={recording.assetId} assetId={recording.assetId} word={`sentence ${index + 1}`} /> : null}
         </li>;
       })}
@@ -81,6 +84,6 @@ export function SentenceAudioControls({ text, recordings, plannedEnds, disabled,
       className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Generate all sentences</button>
     </div>
     {saveError ? <p role="alert" className="text-sm text-rose-700">{saveError}</p> : null}
-    <p className="text-xs text-slate-500">Preparation reuses matching recordings. Generating missing audio or regenerating a sentence uses ElevenLabs credits.</p>
+    <p className="text-xs text-slate-500">Preparation reuses matching recordings and checks their timings automatically. Timing repair keeps the audio and may use ElevenLabs alignment credits. Generating or regenerating audio uses speech credits.</p>
   </section>;
 }
