@@ -20,6 +20,8 @@ export interface TextNarrationSummary {
 export interface SentenceRecording {
   requiresRegeneration?: boolean;
   alignmentIssue?: string;
+  canRepair?: boolean;
+  repairError?: string;
   text: string;
   charStart: number;
   charEnd: number;
@@ -43,6 +45,7 @@ export interface TextWorkspaceDetail {
   narration: TextNarrationSummary | null;
   alignmentSummary: TextAlignmentSummary | null;
   audioGenerationConfigured: boolean;
+  timingRepairAvailable?: boolean;
   activeNarrationJobId?: string | null;
   latestNarrationJobId?: string | null;
   sentenceEndOffsets?: number[];

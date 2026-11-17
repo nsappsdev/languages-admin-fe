@@ -2,6 +2,22 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SentenceAudioControls } from '../SentenceAudioControls';
 jest.mock('../../vocabulary/RecordingPreview', () => ({ RecordingPreview: () => null }));
 
+it('repairs timing without requesting regeneration and keeps failed attempts visible', () => {
+  const onRepair = jest.fn(), onGenerate = jest.fn();
+  const recording = { text: 'Saved sentence.', charStart: 0, charEnd: 15, assetId: 'saved-audio', startSample: 0, endSample: 24000,
+    alignmentIssue: 'Timing data needs repair.', canRepair: true };
+  const props = { text: recording.text, recordings: [recording], disabled: false, onSave: jest.fn(), onDirtyChange: jest.fn(), onGenerate, onRepair };
+  const { rerender } = render(<SentenceAudioControls {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Repair timings for sentence 1' }));
+  expect(onRepair).toHaveBeenCalledWith(0);
+  expect(onGenerate).not.toHaveBeenCalled();
+  expect(screen.queryByText(/Regenerate this sentence before publishing/)).not.toBeInTheDocument();
+  rerender(<SentenceAudioControls {...props} recordings={[{ ...recording, canRepair: false, repairError: 'Repair outcome needs review.' }]} />);
+  expect(screen.getByRole('button', { name: 'Repair timings for sentence 1' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Listen to sentence 1' })).toBeEnabled();
+  expect(screen.getByText(/Repair outcome needs review/)).toBeInTheDocument();
+});
+
 it('generates one sentence before any audio exists and distinguishes regeneration', () => {
   const onGenerate = jest.fn();
   const props = { text: 'One sentence. Another sentence.', recordings: [], disabled: false, onSave: jest.fn(), onDirtyChange: jest.fn(), onGenerate };

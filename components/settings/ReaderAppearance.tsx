@@ -31,6 +31,11 @@ export function ReaderAppearance({settings}:{settings:AppSettings}) {
     }
   },[base,draft,settings]);
   const change=<K extends keyof AppearanceDraft>(key:K,value:AppearanceDraft[K])=>{setDraft(old=>({...old,[key]:value}));setNotice('');};
+  const selectFont=(role:'mainText'|'translation',fontId:string|null)=>{
+    const idKey=role==='mainText'?'mainTextFontId':'translationFontId';
+    const familyKey=role==='mainText'?'mainTextFontFamily':'translationFontFamily';
+    setDraft(old=>({...old,[idKey]:fontId,[familyKey]:'System'}));setNotice('');
+  };
   const save=async()=>{
     if(validation||pending)return;setPending(true);setError('');setNotice('');
     try {
@@ -44,9 +49,7 @@ export function ReaderAppearance({settings}:{settings:AppSettings}) {
   const fontSelect=(role:'mainText'|'translation')=>{
     const idKey=role==='mainText'?'mainTextFontId':'translationFontId'; const familyKey=role==='mainText'?'mainTextFontFamily':'translationFontFamily';
     return <label className="block text-sm font-medium text-slate-700">{role==='mainText'?'English':'Armenian'} font
-      <select className={input} value={draft[idKey]??(draft[familyKey]==='System'?'':`legacy:${draft[familyKey]}`)} onChange={e=>{
-        setDraft(old=>({...old,[idKey]:e.target.value||null,[familyKey]:'System'}));setNotice('');
-      }}><option value="">System (device default)</option>
+      <select className={input} value={draft[idKey]??(draft[familyKey]==='System'?'':`legacy:${draft[familyKey]}`)} onChange={e=>selectFont(role,e.target.value||null)}><option value="">System (device default)</option>
         {!draft[idKey]&&draft[familyKey]!=='System'?<option value={`legacy:${draft[familyKey]}`}>Current device font: {draft[familyKey]}</option>:null}
         {fonts.filter(f=>!f.archivedAt&&f.available&&(role==='mainText'?f.supportsEnglish:f.supportsArmenian)).map(f=><option value={f.id} key={f.id}>{f.label} · {f.subfamilyName}</option>)}
       </select>
@@ -63,7 +66,7 @@ export function ReaderAppearance({settings}:{settings:AppSettings}) {
         {tab==='English'?<>{fontSelect('mainText')}<div className="grid grid-cols-2 gap-3">{number('mainTextFontSize','English font size',12,32)}{number('mainTextLineHeight','English line height',1,2.5,0.05)}</div><p className="text-xs leading-relaxed text-slate-600">Line height is a multiple of font size. Uploaded files render their actual face, including regular or bold.</p></>:null}
         {tab==='Armenian'?<>{fontSelect('translation')}<div className="grid grid-cols-2 gap-3">{number('translationFontMinSize','Minimum translation size',6,20)}{number('translationFontMaxSize','Maximum translation size',6,24)}{number('translationLineHeight','Armenian line height',1,2.5,0.05)}{number('translationLetterSpacingMin','Minimum letter spacing',-2,4,0.1)}{number('translationLetterSpacingMax','Maximum letter spacing',-2,4,0.1)}</div><p className="text-xs leading-relaxed text-slate-600">Translations fit within this size range. Set minimum and maximum to the same value for a fixed size. Letter spacing is measured in points.</p></>:null}
         {tab==='Spacing'?<><div className="grid grid-cols-2 gap-3">{number('translationGap','Translation-to-English gap',0,32)}{number('readingRowGap','Gap between reading rows',0,48)}</div><p className="text-xs leading-relaxed text-slate-600">Both gaps are independent and measured in points. The preview shows their effect on wrapped rows.</p></>:null}
-        {tab==='Fonts'?<FontLibrary fonts={fonts}/>:null}
+        {tab==='Fonts'?<FontLibrary fonts={fonts} mainTextFontId={draft.mainTextFontId} translationFontId={draft.translationFontId} onSelectFont={selectFont}/>:null}
       </fieldset>
       <div className="min-w-0"><ReaderPreview draft={validation?readerAppearance(settings):draft} mainFamily={main.family??fallback(draft.mainTextFontFamily)} translationFamily={translation.family??fallback(draft.translationFontFamily)}/>
         {main.loading||translation.loading?<p role="status" className="mt-2 text-xs text-slate-600">Loading preview font…</p>:null}

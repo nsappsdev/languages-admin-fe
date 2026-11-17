@@ -36,7 +36,7 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
   const jobQuery = useAudioJob(workspace?.activeNarrationJobId ?? jobId ?? workspace?.latestNarrationJobId ?? null);
   const text = draftText ?? workspace?.contentRevision?.text ?? '';
   const textDirty = !!workspace && text !== (workspace.contentRevision?.text ?? '');
-  const generating = mutations.requestNarrationJob.isPending || jobQuery.data?.job.status === 'QUEUED' || jobQuery.data?.job.status === 'RUNNING' || Boolean(workspace?.activeNarrationJobId);
+  const generating = mutations.requestNarrationJob.isPending || mutations.requestTimingRepair?.isPending || jobQuery.data?.job.status === 'QUEUED' || jobQuery.data?.job.status === 'RUNNING' || Boolean(workspace?.activeNarrationJobId);
   const translationsDirty = Object.values(dirtyTranslations).some(Boolean);
   const savingVocabulary = wordAudioBusy || mutations.setSelection.isPending || mutations.setTranslations.isPending || mutations.importVocabulary.isPending;
   const busy = sentenceBreaksDirty || wordAudioBusy || importDirty || phraseDirty || mutations.importVocabulary.isPending || textDirty || generating || mutations.saveContentRevision.isPending || mutations.setSelection.isPending || mutations.setTranslations.isPending || Object.values(dirtyTranslations).some(Boolean);
@@ -101,8 +101,14 @@ export function TextAuthoringPanel({ lessonId, textId, onBusyChange }: {
       disabled={textDirty || generating || mutations.saveSentencePlan.isPending || mutations.saveContentRevision.isPending || savingVocabulary || translationsDirty || importDirty || phraseDirty}
       audioDisabled={!workspace.audioGenerationConfigured}
       onSave={async ends => { await mutations.saveSentencePlan.mutateAsync({ contentRevisionId: workspace.contentRevision!.id, expectedDraftVersion: workspace.draftVersion, sentenceEndOffsets: ends }); }}
+      onRepair={index => void run(async () => { const result = await mutations.requestTimingRepair.mutateAsync({ contentRevisionId: workspace.contentRevision!.id, expectedDraftVersion: workspace.draftVersion, sentenceIndex: index }); setJobId(result.job.id); })}
       onDirtyChange={setSentenceBreaksDirty} onGenerate={(ends, index, regenerate) => void run(() => saveAndGenerate(ends, index, regenerate))} />
-    {generating ? <p role="status" className="text-sm text-slate-600">Generating sentence audio…</p> : null}
+    {workspace.timingRepairAvailable ? <div className="flex flex-wrap items-center gap-3">
+      <button type="button" disabled={busy} onClick={() => void run(async () => { const result = await mutations.requestTimingRepair.mutateAsync({ contentRevisionId: workspace.contentRevision!.id, expectedDraftVersion: workspace.draftVersion }); setJobId(result.job.id); })}
+        className="rounded-md border border-slate-300 px-3 py-2 text-sm">Repair saved timings</button>
+      <p className="text-xs text-slate-600">Keeps existing recordings. Missing audio is not generated.</p>
+    </div> : null}
+    {generating ? <p role="status" className="text-sm text-slate-600">Preparing audio and timings…</p> : null}
     {jobQuery.data?.job.status === 'FAILED' ? <p role="alert" className="text-sm text-rose-700">{jobQuery.data.job.error?.message ?? 'Sentence generation failed. Try again.'}</p> : null}
     {actionError ? <p role="alert" className="text-sm text-rose-700">{actionError}</p> : null}
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
